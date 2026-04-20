@@ -21,11 +21,11 @@ export async function GET(req: NextRequest) {
         supabase.from("rma").select("classificacao").not("classificacao", "is", null),
       ]);
 
-      const fabs = [...new Set(fabData?.map((r) => r.fabricante).filter(Boolean))].sort();
-      const mods = [...new Map(modData?.map((r) => [r.produto, r.fabricante]) ?? []).entries()]
+      const fabs = Array.from(new Set(fabData?.map((r) => r.fabricante).filter(Boolean) ?? [])).sort();
+      const mods = Array.from(new Map(modData?.map((r) => [r.produto, r.fabricante] as [string, string | null]) ?? []).entries())
         .map(([prod, fab]) => ({ produto: prod, fabricante: fab }))
         .sort((a, b) => (a.produto ?? "").localeCompare(b.produto ?? ""));
-      const classes = [...new Set(classData?.map((r) => r.classificacao).filter(Boolean))].sort();
+      const classes = Array.from(new Set(classData?.map((r) => r.classificacao).filter(Boolean) ?? [])).sort();
 
       return NextResponse.json({ fabricantes: fabs, modelos: mods, classificacoes: classes });
     }
