@@ -15,17 +15,34 @@ export async function GET(req: NextRequest) {
 
   try {
     if (type === "filters") {
-      const [{ data: fabData }, { data: modData }, { data: classData }] = await Promise.all([
-        supabase.from("rma").select("fabricante").not("fabricante", "is", null),
-        supabase.from("rma").select("produto, fabricante").not("produto", "is", null),
-        supabase.from("rma").select("classificacao").not("classificacao", "is", null),
+      const sb = supabase as ReturnType<typeof createServerClient>;
+      const [r1, r2, r3] = await Promise.all([
+        sb.from("rma").select("fabricante"),
+        sb.from("rma").select("produto, fabricante"),
+        sb.from("rma").select("classificacao"),
       ]);
 
-      const fabs = Array.from(new Set(fabData?.map((r) => r.fabricante).filter(Boolean) ?? [])).sort();
-      const mods = Array.from(new Map(modData?.map((r) => [r.produto, r.fabricante] as [string, string | null]) ?? []).entries())
-        .map(([prod, fab]) => ({ produto: prod, fabricante: fab }))
-        .sort((a, b) => (a.produto ?? "").localeCompare(b.produto ?? ""));
-      const classes = Array.from(new Set(classData?.map((r) => r.classificacao).filter(Boolean) ?? [])).sort();
+      type R1 = { fabricante: string | null };
+      type R2 = { produto: string | null; fabricante: string | null };
+      type R3 = { classificacao: string | null };
+
+      const fabRows = (r1.data ?? []) as R1[];
+      const modRows = (r2.data ?? []) as R2[];
+      const classRows = (r3.data ?? []) as R3[];
+
+      const fabSet = new Set<string>();
+      fabRows.forEach((r) => { if (r.fabricante) fabSet.add(r.fabricante); });
+      const fabs = Array.from(fabSet).sort();
+
+      const modMap = new Map<string, string | null>();
+      modRows.forEach((r) => { if (r.produto) modMap.set(r.produto, r.fabricante); });
+      const mods = Array.from(modMap.entries())
+        .map(([produto, fabricante]) => ({ produto, fabricante }))
+        .sort((a, b) => a.produto.localeCompare(b.produto));
+
+      const classSet = new Set<string>();
+      classRows.forEach((r) => { if (r.classificacao) classSet.add(r.classificacao); });
+      const classes = Array.from(classSet).sort();
 
       return NextResponse.json({ fabricantes: fabs, modelos: mods, classificacoes: classes });
     }
