@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Windows-MCP__PowerShell"
+    ]
+  }
+}
