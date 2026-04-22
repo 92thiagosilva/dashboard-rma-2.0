@@ -43,21 +43,43 @@ async function upsertChunks<T extends Record<string, unknown>>(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { type, rows, filename, recordHistory = true, totalRows } = body as {
+    const { type, rows, filename, recordHistory = true, totalRows, truncateFirst = false } = body as {
       type: string;
       rows: Record<string, unknown>[];
       filename: string;
       recordHistory?: boolean;
       totalRows?: number;
+      truncateFirst?: boolean;
     };
 
     if (!type || !rows || !Array.isArray(rows)) {
       return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
     }
 
-    console.log(`[import] Iniciando: type=${type} rows=${rows.length} file=${filename}`);
+    console.log(`[import] Iniciando: type=${type} rows=${rows.length} file=${filename} truncateFirst=${truncateFirst}`);
 
     const supabase = createAdminClient();
+
+    // Truncar tabela antes do primeiro batch para sobrescrever dados existentes
+    if (truncateFirst) {
+      const tableMap: Record<string, string> = {
+        vendas: "vendas",
+        rma: "rma",
+        estoque: "estoque_danificado",
+        mttf: "mttf_referencia",
+      };
+      const tableName = tableMap[type];
+      if (tableName) {
+        const { error: truncErr } = await supabase.rpc("truncate_import_table", { p_table: tableName });
+        if (truncErr) {
+          console.error("[import] Erro ao truncar tabela:", truncErr);
+          // Não falha — continua com insert mesmo sem truncar
+        } else {
+          console.log(`[import] Tabela ${tableName} truncada com sucesso`);
+        }
+      }
+    }
+
     let rowsImported = 0;
 
     if (type === "vendas") {

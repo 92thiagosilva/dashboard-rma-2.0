@@ -105,6 +105,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
               filename: entry.file.name,
               recordHistory: isLastBatch,
               totalRows: parsedRows.length,
+              truncateFirst: b === 0, // limpa dados anteriores antes do primeiro batch
             }),
           });
 
