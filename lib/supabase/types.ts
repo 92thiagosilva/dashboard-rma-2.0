@@ -23,6 +23,7 @@ export type Database = {
           data_venda: string | null;
           sn: string | null;
           estado: string | null;
+          sac: string | null;
           problematica: string | null;
           nro_fotus: string | null;
           produto: string | null;

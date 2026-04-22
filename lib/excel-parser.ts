@@ -75,6 +75,7 @@ export function parseRMA(rows: Record<string, unknown>[]): RMAInsert[] {
       data_venda: parseExcelDate(n["DATA DA VENDA"]),
       sn: String(n["SN"] ?? "").trim() || null,
       estado: String(n["ESTADO"] ?? "").trim().toUpperCase().slice(0, 2) || null,
+      sac: n["SAC"] != null ? String(n["SAC"]).trim() || null : null,
       problematica: String(n["PROBLEMÁTICA"] ?? n["PROBLEMATICA"] ?? "").trim() || null,
       nro_fotus: String(n["NRO. FOTUS"] ?? n["NRO FOTUS"] ?? "").trim() || null,
       produto: String(n["PRODUTO"] ?? "").trim() || null,

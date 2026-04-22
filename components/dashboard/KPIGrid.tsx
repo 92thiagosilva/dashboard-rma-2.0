@@ -70,7 +70,9 @@ export function KPIGrid() {
     // Total de inversores = soma das quantidades vendidas
     const totalInversores = filteredVendas.reduce((s, v) => s + (v.quantidade_vendida ?? 0), 0);
 
-    const totalRMA = rmaData.length;
+    // Total RMAs = SACs únicos (um SAC pode ter múltiplas linhas)
+    const sacSet = new Set(rmaData.map((r) => r.sac).filter(Boolean));
+    const totalRMA = sacSet.size > 0 ? sacSet.size : rmaData.length;
 
     // Taxa de falha usa inversores como denominador (unidades no campo)
     const taxa = totalInversores > 0 ? (totalRMA / totalInversores) * 100 : 0;
