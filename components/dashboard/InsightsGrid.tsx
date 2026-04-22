@@ -2,8 +2,8 @@
 
 import { useMemo } from "react";
 import { useDashboard } from "@/lib/store";
-import { calcularSolarInsights } from "@/lib/analytics";
-import { ArrowUp, SolarPanel, Thermometer, Warning } from "@phosphor-icons/react";
+import { calcularSolarInsights, calcularConfiabilidadeInsights } from "@/lib/analytics";
+import { ArrowUp, ArrowDown, SolarPanel, Thermometer, Warning, Lightning, Shield, ChartBar } from "@phosphor-icons/react";
 
 interface InsightCardProps {
   label: string;
@@ -89,8 +89,9 @@ export function InsightsGrid() {
     const topEstado = Object.entries(rmaPorEstado).sort((a, b) => b[1] - a[1])[0] ?? ["—", 0];
 
     const solar = calcularSolarInsights(rmaData, vendasPorFabricante);
+    const confiabilidade = calcularConfiabilidadeInsights(rmaData);
 
-    return { topVolume, topTaxa, topDefeito, topEstado, solar };
+    return { topVolume, topTaxa, topDefeito, topEstado, solar, confiabilidade };
   }, [rmaData, vendasData]);
 
   return (
@@ -126,6 +127,115 @@ export function InsightsGrid() {
           loading={loading}
         />
       </div>
+
+      {/* Painel Análise de Confiabilidade */}
+      {insights?.confiabilidade && !loading && (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-card p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Shield size={14} weight="duotone" className="text-blue-500" />
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Análise de Confiabilidade</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+            {/* Ranking Confiabilidade por Fabricante */}
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+              <div className="flex items-center gap-1.5 mb-2">
+                <ChartBar size={11} weight="fill" className="text-slate-500" />
+                <span className="text-[9px] font-bold text-slate-600 uppercase tracking-wider">MTTF por Fabricante</span>
+              </div>
+              {insights.confiabilidade.rankingFabricantes.length > 0 ? (
+                <div className="space-y-1">
+                  {insights.confiabilidade.rankingFabricantes.slice(0, 4).map((f) => (
+                    <div key={f.fabricante} className="flex items-center justify-between gap-1">
+                      <span className="text-[10px] text-slate-600 truncate flex-1">{f.fabricante}</span>
+                      <span className={`text-[10px] font-bold shrink-0 ${
+                        f.nivel === "critico" ? "text-red-600" :
+                        f.nivel === "atencao" ? "text-amber-600" : "text-emerald-600"
+                      }`}>
+                        {f.mttfMedio}d
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[10px] text-slate-400">Mín. 3 RMAs por fabricante</p>
+              )}
+            </div>
+
+            {/* Janela de Falhas */}
+            <div className="p-3 bg-violet-50 rounded-lg border border-violet-100">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Lightning size={11} weight="fill" className="text-violet-500" />
+                <span className="text-[9px] font-bold text-violet-600 uppercase tracking-wider">Janela de Falhas</span>
+              </div>
+              {(() => {
+                const j = insights.confiabilidade.janelaFalhas;
+                const com = j.total - j.semDados;
+                return com > 0 ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-red-600">Precoce &lt;1 ano</span>
+                      <span className="text-[10px] font-bold text-red-700">
+                        {Math.round((j.precoce / com) * 100)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-amber-600">Normal 1–5 anos</span>
+                      <span className="text-[10px] font-bold text-amber-700">
+                        {Math.round((j.normal / com) * 100)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-emerald-600">Tardia &gt;5 anos</span>
+                      <span className="text-[10px] font-bold text-emerald-700">
+                        {Math.round((j.tardia / com) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                ) : <p className="text-[10px] text-slate-400">Sem dados de MTTF</p>;
+              })()}
+            </div>
+
+            {/* Tipo de Alimentação */}
+            <div className="p-3 bg-sky-50 rounded-lg border border-sky-100">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Thermometer size={11} weight="fill" className="text-sky-500" />
+                <span className="text-[9px] font-bold text-sky-600 uppercase tracking-wider">Tipo Alimentação</span>
+              </div>
+              <div className="space-y-1">
+                {insights.confiabilidade.tipoAlimentacao.slice(0, 3).map((t) => (
+                  <div key={t.tipo} className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-sky-700 truncate flex-1">{t.tipo}</span>
+                    <span className="text-[10px] font-bold text-sky-800 shrink-0">{t.pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Produto com pior MTTF */}
+            <div className="p-3 bg-red-50 rounded-lg border border-red-100">
+              <div className="flex items-center gap-1.5 mb-2">
+                <ArrowDown size={11} weight="bold" className="text-red-500" />
+                <span className="text-[9px] font-bold text-red-600 uppercase tracking-wider">Menor MTTF</span>
+              </div>
+              {insights.confiabilidade.piorMTTFAlerta ? (
+                <>
+                  <p className="text-[10px] font-semibold text-red-700 truncate leading-tight" title={insights.confiabilidade.piorMTTFAlerta.produto}>
+                    {insights.confiabilidade.piorMTTFAlerta.produto}
+                  </p>
+                  <p className="text-[10px] text-red-500 mt-0.5">
+                    {insights.confiabilidade.piorMTTFAlerta.mttf} dias médios
+                  </p>
+                  <p className="text-[10px] text-slate-400">{insights.confiabilidade.piorMTTFAlerta.fabricante}</p>
+                </>
+              ) : (
+                <p className="text-[10px] text-slate-400">Mín. 5 ocorrências</p>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Solar FV Insights panel */}
       {insights?.solar && !loading && (

@@ -73,6 +73,111 @@ export interface SolarInsight {
   mesComMaisRMA: { mes: string; total: number } | null;
 }
 
+export interface ConfiabilidadeFabricante {
+  fabricante: string;
+  mttfMedio: number;
+  totalRMA: number;
+  nivel: "critico" | "atencao" | "bom"; // <180d | 180-730d | >730d
+}
+
+export interface JanelaFalhas {
+  precoce: number;   // < 365 dias (1º ano)
+  normal: number;    // 365–1825 dias (1–5 anos)
+  tardia: number;    // > 1825 dias (> 5 anos)
+  semDados: number;  // sem mttf_dias
+  total: number;
+}
+
+export interface ConfiabilidadeInsight {
+  rankingFabricantes: ConfiabilidadeFabricante[];
+  janelaFalhas: JanelaFalhas;
+  tipoAlimentacao: { tipo: string; total: number; pct: number }[];
+  piorMTTFAlerta: { produto: string; fabricante: string; mttf: number } | null;
+}
+
+export function calcularConfiabilidadeInsights(
+  rmaData: Array<{
+    fabricante: string | null;
+    produto: string | null;
+    mttf_dias: number | null;
+    tipo_alimentacao: string | null;
+  }>
+): ConfiabilidadeInsight {
+  const mttfPorFab: Record<string, { total: number; count: number }> = {};
+  const rmaPorFab: Record<string, number> = {};
+  const mttfPorProd: Record<string, { total: number; count: number; fab: string }> = {};
+  const rmaPorTipo: Record<string, number> = {};
+  const janela: JanelaFalhas = { precoce: 0, normal: 0, tardia: 0, semDados: 0, total: rmaData.length };
+
+  for (const r of rmaData) {
+    const fab = r.fabricante ?? "Desconhecido";
+    const tipo = r.tipo_alimentacao?.trim() || "Não informado";
+
+    rmaPorFab[fab] = (rmaPorFab[fab] ?? 0) + 1;
+    rmaPorTipo[tipo] = (rmaPorTipo[tipo] ?? 0) + 1;
+
+    const dias = r.mttf_dias;
+    if (dias && dias > 0 && dias < 36500) {
+      if (!mttfPorFab[fab]) mttfPorFab[fab] = { total: 0, count: 0 };
+      mttfPorFab[fab].total += dias;
+      mttfPorFab[fab].count += 1;
+
+      if (r.produto) {
+        if (!mttfPorProd[r.produto]) mttfPorProd[r.produto] = { total: 0, count: 0, fab };
+        mttfPorProd[r.produto].total += dias;
+        mttfPorProd[r.produto].count += 1;
+      }
+
+      if (dias < 365) janela.precoce += 1;
+      else if (dias <= 1825) janela.normal += 1;
+      else janela.tardia += 1;
+    } else {
+      janela.semDados += 1;
+    }
+  }
+
+  // Ranking fabricantes por MTTF médio (mínimo 3 RMAs para ser relevante)
+  const rankingFabricantes: ConfiabilidadeFabricante[] = Object.entries(mttfPorFab)
+    .filter(([, v]) => v.count >= 3)
+    .map(([fab, v]) => {
+      const mttfMedio = Math.round(v.total / v.count);
+      return {
+        fabricante: fab,
+        mttfMedio,
+        totalRMA: rmaPorFab[fab] ?? 0,
+        nivel: mttfMedio < 180 ? "critico" : mttfMedio < 730 ? "atencao" : "bom",
+      };
+    })
+    .sort((a, b) => b.mttfMedio - a.mttfMedio)
+    .slice(0, 6);
+
+  // Tipo de alimentação breakdown
+  const totalTipo = Object.values(rmaPorTipo).reduce((s, v) => s + v, 0);
+  const tipoAlimentacao = Object.entries(rmaPorTipo)
+    .map(([tipo, total]) => ({
+      tipo,
+      total,
+      pct: totalTipo > 0 ? Math.round((total / totalTipo) * 100 * 10) / 10 : 0,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 4);
+
+  // Produto com menor MTTF (mínimo 5 ocorrências para ser relevante)
+  const prodEntries = Object.entries(mttfPorProd)
+    .filter(([, v]) => v.count >= 5)
+    .map(([prod, v]) => ({
+      produto: prod,
+      fabricante: v.fab,
+      mttf: Math.round(v.total / v.count),
+    }));
+
+  const piorMTTFAlerta = prodEntries.length > 0
+    ? prodEntries.reduce((a, b) => (a.mttf < b.mttf ? a : b))
+    : null;
+
+  return { rankingFabricantes, janelaFalhas: janela, tipoAlimentacao, piorMTTFAlerta };
+}
+
 export function calcularSolarInsights(
   rmaData: Array<{
     fabricante: string | null;
