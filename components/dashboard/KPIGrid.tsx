@@ -42,9 +42,18 @@ export function KPIGrid() {
   const { rmaData, vendasData, loading } = useDashboard();
 
   const kpis = useMemo(() => {
-    const totalVendas = vendasData.reduce((s, v) => s + (v.quantidade_vendida ?? 0), 0);
+    // Total de pedidos = NFs únicas (uma NF pode ter vários inversores)
+    const nfSet = new Set(vendasData.map((v) => v.numero_fotus).filter(Boolean));
+    const totalVendas = nfSet.size;
+
+    // Total de inversores = soma das quantidades vendidas
+    const totalInversores = vendasData.reduce((s, v) => s + (v.quantidade_vendida ?? 0), 0);
+
     const totalRMA = rmaData.length;
-    const taxa = totalVendas > 0 ? (totalRMA / totalVendas) * 100 : 0;
+
+    // Taxa de falha usa inversores como denominador (unidades no campo)
+    const taxa = totalInversores > 0 ? (totalRMA / totalInversores) * 100 : 0;
+
     const estados = new Set(rmaData.map((r) => r.estado).filter(Boolean)).size;
 
     let rmaDia = 0;
@@ -55,22 +64,23 @@ export function KPIGrid() {
         .filter(Boolean)
         .map((d) => new Date(d!).getTime());
       if (dates.length > 0) {
-        const minDate = Math.min(...dates);
-        const maxDate = Math.max(...dates);
+        const minDate = dates.reduce((a, b) => Math.min(a, b));
+        const maxDate = dates.reduce((a, b) => Math.max(a, b));
         const diffDays = Math.max(1, Math.ceil((maxDate - minDate) / 86400000) + 1);
         rmaDia = totalRMA / diffDays;
         rmaMes = rmaDia * 30.44;
       }
     }
 
-    return { totalVendas, totalRMA, taxa, estados, rmaDia, rmaMes };
+    return { totalVendas, totalInversores, totalRMA, taxa, estados, rmaDia, rmaMes };
   }, [rmaData, vendasData]);
 
   return (
     <div className="grid grid-cols-3 gap-4 mb-5">
       <KPICard
-        label="Total Vendas (filtrado)"
+        label="Pedidos (NFs únicas)"
         value={kpis.totalVendas.toLocaleString("pt-BR")}
+        sub={`${kpis.totalInversores.toLocaleString("pt-BR")} inversores vendidos`}
         accent="blue"
         loading={loading}
       />
@@ -83,7 +93,7 @@ export function KPIGrid() {
       <KPICard
         label="Taxa de Falha"
         value={`${kpis.taxa.toFixed(2)}%`}
-        sub={`${kpis.totalRMA} RMAs / ${kpis.totalVendas.toLocaleString("pt-BR")} Vendas`}
+        sub={`${kpis.totalRMA} RMAs / ${kpis.totalInversores.toLocaleString("pt-BR")} inversores`}
         accent={kpis.taxa > 5 ? "red" : kpis.taxa > 2 ? "amber" : "green"}
         loading={loading}
       />
