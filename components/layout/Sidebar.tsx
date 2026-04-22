@@ -12,7 +12,7 @@ function CheckboxItem({
   label, checked, onChange,
 }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center gap-2 py-1 cursor-pointer group">
+    <label className="flex items-center gap-2 py-1 cursor-pointer group" onClick={() => onChange(!checked)}>
       <div
         className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
           checked ? "bg-blue-500 border-blue-500" : "border-slate-500 group-hover:border-blue-400"
