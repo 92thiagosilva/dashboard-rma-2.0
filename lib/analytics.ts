@@ -1,3 +1,29 @@
+/**
+ * Recalcula a classificação do produto conforme tabela Fotus:
+ *   Monofásica          → Pequeno Porte (independente da potência)
+ *   Trifásica 220V/380V → ≤ 20 kW = Pequeno Porte
+ *                          > 20 e ≤ 40 kW = Médio Porte
+ *                          > 40 kW = Grande Porte
+ */
+export function calcularClassificacao(
+  tipoAlimentacao: string | null,
+  potencia: number | null
+): string {
+  if (!tipoAlimentacao) return "Não classificado";
+
+  const tipo = tipoAlimentacao.toLowerCase().trim();
+
+  if (tipo.includes("mono")) {
+    return "Pequeno Porte";
+  }
+
+  // Trifásica (220V LV ou 380V)
+  if (potencia === null || potencia <= 0) return "Não classificado";
+  if (potencia <= 20) return "Pequeno Porte";
+  if (potencia <= 40) return "Médio Porte";
+  return "Grande Porte";
+}
+
 export interface FilterState {
   dateStart: string;
   dateEnd: string;

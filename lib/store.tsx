@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import type { FilterState } from "@/lib/analytics";
+import { calcularClassificacao } from "@/lib/analytics";
 
 // --- Types ---
 export interface RMARow {
@@ -124,7 +125,13 @@ const DEFAULT_FILTERS: FilterState = {
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // Hidrata imediatamente do cache para evitar tela vazia no reload
-  const [rmaData, setRmaData] = useState<RMARow[]>(() => cacheGet<RMARow[]>("rma") ?? []);
+  // Reaplica override de classificação mesmo nos dados em cache
+  const [rmaData, setRmaData] = useState<RMARow[]>(() =>
+    (cacheGet<RMARow[]>("rma") ?? []).map((r) => ({
+      ...r,
+      classificacao: calcularClassificacao(r.tipo_alimentacao, r.potencia),
+    }))
+  );
   const [vendasData, setVendasData] = useState<VendasRow[]>(() => cacheGet<VendasRow[]>("vendas") ?? []);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>(
     () => cacheGet<FilterOptions>("filterOptions") ?? { fabricantes: [], modelos: [], classificacoes: [] }
@@ -166,13 +173,27 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       if (f.stockStatus !== "Todos") params.set("stockStatus", f.stockStatus);
       if (f.fabricantes.length > 0) params.set("fabricantes", f.fabricantes.join(","));
       if (f.modelos.length > 0) params.set("modelos", f.modelos.join(","));
-      if (f.classificacoes.length > 0) params.set("classificacoes", f.classificacoes.join(","));
+      // Classificação NÃO é enviada ao servidor — é calculada client-side
+      // via calcularClassificacao(tipo_alimentacao, potencia)
 
       const res = await fetch(`/api/analytics?${params}`, { signal: abortRef.current.signal });
       if (!res.ok) return;
       const data = await res.json();
 
-      setRmaData(data.rma ?? []);
+      // Override classificacao conforme regras Fotus (tipo_alimentacao + potencia)
+      const rmaWithClass = (data.rma ?? []).map((r: RMARow) => ({
+        ...r,
+        classificacao: calcularClassificacao(r.tipo_alimentacao, r.potencia),
+      }));
+
+      // Aplica filtro de classificação client-side (quando não todas selecionadas)
+      const TODAS_CLASS = ["Pequeno Porte", "Médio Porte", "Grande Porte", "Não classificado"];
+      const filtrarClass = f.classificacoes.length > 0 && f.classificacoes.length < TODAS_CLASS.length;
+      const rmaFinal: RMARow[] = filtrarClass
+        ? rmaWithClass.filter((r: RMARow) => f.classificacoes.includes(r.classificacao ?? ""))
+        : rmaWithClass;
+
+      setRmaData(rmaFinal);
       setVendasData(data.vendas ?? []);
 
       // Salva no cache apenas quando não há filtros ativos (dados "completos")
@@ -183,7 +204,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         f.modelos.length === 0 &&
         f.classificacoes.length === 0;
       if (noFilters) {
-        cacheSet("rma", data.rma ?? []);
+        cacheSet("rma", rmaWithClass); // cache com classificação já calculada
         cacheSet("vendas", data.vendas ?? []);
       }
     } catch {
@@ -199,8 +220,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) return;
       const data = await res.json();
 
-      setFilterOptions(data);
-      cacheSet("filterOptions", data);
+      // Classificações são fixas pelas regras Fotus (tipo_alimentacao + potencia)
+      const CLASSIFICACOES_FIXAS = ["Pequeno Porte", "Médio Porte", "Grande Porte", "Não classificado"];
+      const mergedData = { ...data, classificacoes: CLASSIFICACOES_FIXAS };
+      setFilterOptions(mergedData);
+      cacheSet("filterOptions", mergedData);
 
       // Só inicializa filtros na primeira carga (para não sobrescrever seleção do usuário)
       if (!initializedRef.current) {
@@ -211,7 +235,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
             ...DEFAULT_FILTERS,
             fabricantes: data.fabricantes ?? [],
             modelos: data.modelos?.map((m: { produto: string | null }) => m.produto).filter(Boolean) ?? [],
-            classificacoes: data.classificacoes ?? [],
+            classificacoes: CLASSIFICACOES_FIXAS,
           };
           setFiltersState(initFilters);
           cacheSet("filtersState", initFilters);
