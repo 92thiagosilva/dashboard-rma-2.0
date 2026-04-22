@@ -47,8 +47,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ fabricantes: fabs, modelos: mods, classificacoes: classes });
     }
 
-    // Build RMA query
-    let rmaQuery = supabase.from("rma").select("*");
+    // Build RMA query — limit 20k para não travar sem filtros
+    let rmaQuery = supabase.from("rma").select("*").limit(20000);
     if (dateStart) rmaQuery = rmaQuery.gte("data_criacao", dateStart);
     if (dateEnd) rmaQuery = rmaQuery.lte("data_criacao", dateEnd);
     if (stockStatus !== "Todos") rmaQuery = rmaQuery.eq("ativo", stockStatus);
@@ -56,21 +56,33 @@ export async function GET(req: NextRequest) {
     if (modelos.length > 0) rmaQuery = rmaQuery.in("produto", modelos);
     if (classificacoes.length > 0) rmaQuery = rmaQuery.in("classificacao", classificacoes);
 
-    // Build Vendas query
-    let vendasQuery = supabase.from("vendas").select("*");
+    // Build Vendas query — limit 120k para não travar sem filtros
+    let vendasQuery = supabase.from("vendas").select("*").limit(120000);
     if (dateStart) vendasQuery = vendasQuery.gte("data_venda", dateStart);
     if (dateEnd) vendasQuery = vendasQuery.lte("data_venda", dateEnd);
 
-    const [{ data: rmaData, error: rmaErr }, { data: vendasData, error: vendasErr }] =
-      await Promise.all([rmaQuery, vendasQuery]);
+    // Executa queries independentemente para evitar falha total se uma tabela tiver problema
+    const [rmaResult, vendasResult] = await Promise.all([rmaQuery, vendasQuery]);
 
-    if (rmaErr) throw rmaErr;
-    if (vendasErr) throw vendasErr;
+    if (rmaResult.error) {
+      console.error("[analytics] Erro na query rma:", rmaResult.error);
+    }
+    if (vendasResult.error) {
+      console.error("[analytics] Erro na query vendas:", vendasResult.error);
+    }
 
-    return NextResponse.json({ rma: rmaData ?? [], vendas: vendasData ?? [] });
+    // Retorna o que tiver — erros individuais não derrubam o dashboard
+    return NextResponse.json({
+      rma: rmaResult.data ?? [],
+      vendas: vendasResult.data ?? [],
+      errors: {
+        rma: rmaResult.error?.message ?? null,
+        vendas: vendasResult.error?.message ?? null,
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
-    console.error("[analytics] Erro:", JSON.stringify(err, null, 2));
+    console.error("[analytics] Erro geral:", err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
