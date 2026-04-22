@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  Package, MagnifyingGlass, FunnelSimple, CaretLeft, CaretRight, X,
+  Package, MagnifyingGlass, CaretLeft, CaretRight, X,
 } from "@phosphor-icons/react";
 import { HorizontalBarChart } from "@/components/dashboard/HorizontalBar";
 import { useDashboard } from "@/lib/store";
@@ -24,7 +24,6 @@ interface EstoqueRow {
   data_envio: string | null;
 }
 
-const STATUS_ORDER = ["1-RECEBIDO NO CD", "2-SEPARADO PARA ENVIO", "3-ENVIADO"];
 const STATUS_LABELS: Record<string, string> = {
   "1-RECEBIDO NO CD": "Recebido no CD",
   "2-SEPARADO PARA ENVIO": "Separado p/ Envio",
@@ -50,10 +49,9 @@ export function EstoqueView() {
   const [allData, setAllData] = useState<EstoqueRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [page, setPage] = useState(0);
 
-  // Fetch all data once (no server-side filters — client-side is fast for ~2107 rows)
+  // Fetch all data once — client-side filtering is instant for ~2107 rows
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -62,7 +60,7 @@ export function EstoqueView() {
       const rows: EstoqueRow[] = json.data ?? [];
       setAllData(rows);
 
-      // Derive filter options from full dataset and push to store for Sidebar
+      // Derive filter options and push to store for Sidebar
       const fabs = new Set<string>();
       const tipos = new Set<string>();
       const empresas = new Set<string>();
@@ -88,47 +86,36 @@ export function EstoqueView() {
     fetchData();
   }, [fetchData]);
 
-  // Reset page when filters change
+  // Reset page when any filter changes
   useEffect(() => {
     setPage(0);
-  }, [estoqueFilters, selectedStatus, search]);
+  }, [estoqueFilters, search]);
 
-  // Client-side filtering
+  // Client-side filtering (all filters from store + local search)
   const filteredData = useMemo(() => {
     let rows = allData;
 
-    // Status filter
-    if (selectedStatus.length > 0) {
-      rows = rows.filter((r) => r.status && selectedStatus.includes(r.status));
-    }
+    if (estoqueFilters.status.length > 0)
+      rows = rows.filter((r) => r.status && estoqueFilters.status.includes(r.status));
 
-    // Fabricante filter (from sidebar)
-    if (estoqueFilters.fabricantes.length > 0) {
+    if (estoqueFilters.fabricantes.length > 0)
       rows = rows.filter((r) => r.fabricante && estoqueFilters.fabricantes.includes(r.fabricante));
-    }
 
-    // Tipo filter (from sidebar)
-    if (estoqueFilters.tipos.length > 0) {
+    if (estoqueFilters.tipos.length > 0)
       rows = rows.filter((r) => r.tipo && estoqueFilters.tipos.includes(r.tipo));
-    }
 
-    // Empresa/CD filter (from sidebar)
-    if (estoqueFilters.empresas.length > 0) {
+    if (estoqueFilters.empresas.length > 0)
       rows = rows.filter((r) => {
         const emp = r.empresa ?? r.cd;
         return emp && estoqueFilters.empresas.includes(emp);
       });
-    }
 
-    // Previsão de Envio date range filter (from sidebar)
-    if (estoqueFilters.previsaoStart) {
+    if (estoqueFilters.previsaoStart)
       rows = rows.filter((r) => r.previsao_envio && r.previsao_envio >= estoqueFilters.previsaoStart);
-    }
-    if (estoqueFilters.previsaoEnd) {
-      rows = rows.filter((r) => r.previsao_envio && r.previsao_envio <= estoqueFilters.previsaoEnd);
-    }
 
-    // Text search (produto or SN)
+    if (estoqueFilters.previsaoEnd)
+      rows = rows.filter((r) => r.previsao_envio && r.previsao_envio <= estoqueFilters.previsaoEnd);
+
     if (search.trim()) {
       const q = search.toLowerCase().trim();
       rows = rows.filter(
@@ -140,38 +127,6 @@ export function EstoqueView() {
     }
 
     return rows;
-  }, [allData, selectedStatus, estoqueFilters, search]);
-
-  const statusCounts = useMemo(() => {
-    const sc: Record<string, number> = {};
-    // Count from full data so status badges show totals regardless of status filter
-    const base = (() => {
-      let rows = allData;
-      if (estoqueFilters.fabricantes.length > 0)
-        rows = rows.filter((r) => r.fabricante && estoqueFilters.fabricantes.includes(r.fabricante));
-      if (estoqueFilters.tipos.length > 0)
-        rows = rows.filter((r) => r.tipo && estoqueFilters.tipos.includes(r.tipo));
-      if (estoqueFilters.empresas.length > 0)
-        rows = rows.filter((r) => {
-          const emp = r.empresa ?? r.cd;
-          return emp && estoqueFilters.empresas.includes(emp);
-        });
-      if (estoqueFilters.previsaoStart)
-        rows = rows.filter((r) => r.previsao_envio && r.previsao_envio >= estoqueFilters.previsaoStart);
-      if (estoqueFilters.previsaoEnd)
-        rows = rows.filter((r) => r.previsao_envio && r.previsao_envio <= estoqueFilters.previsaoEnd);
-      if (search.trim()) {
-        const q = search.toLowerCase().trim();
-        rows = rows.filter(
-          (r) => (r.produto ?? "").toLowerCase().includes(q) || (r.sn ?? "").toLowerCase().includes(q)
-        );
-      }
-      return rows;
-    })();
-    base.forEach((r) => {
-      if (r.status) sc[r.status] = (sc[r.status] ?? 0) + 1;
-    });
-    return sc;
   }, [allData, estoqueFilters, search]);
 
   const kpis = useMemo(() => ({
@@ -188,9 +143,7 @@ export function EstoqueView() {
         if (r.fabricante) acc[r.fabricante] = (acc[r.fabricante] ?? 0) + 1;
         return acc;
       }, {})
-    )
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value]) => ({ label, value, displayValue: value })),
+    ).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value, displayValue: value })),
   [filteredData]);
 
   const tipoChart = useMemo(() =>
@@ -199,13 +152,22 @@ export function EstoqueView() {
         if (r.tipo) acc[r.tipo] = (acc[r.tipo] ?? 0) + 1;
         return acc;
       }, {})
-    )
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value]) => ({ label, value, displayValue: value })),
+    ).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value, displayValue: value })),
   [filteredData]);
 
-  // Count active sidebar filters for badge
+  const cdChart = useMemo(() =>
+    Object.entries(
+      filteredData.reduce<Record<string, number>>((acc, r) => {
+        const cd = r.cd ?? r.empresa;
+        if (cd) acc[cd] = (acc[cd] ?? 0) + 1;
+        return acc;
+      }, {})
+    ).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value, displayValue: value })),
+  [filteredData]);
+
+  // Count active sidebar filters for tag strip
   const activeSidebarFilters =
+    estoqueFilters.status.length +
     estoqueFilters.fabricantes.length +
     estoqueFilters.tipos.length +
     estoqueFilters.empresas.length +
@@ -247,6 +209,9 @@ export function EstoqueView() {
       {activeSidebarFilters > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Filtros ativos:</span>
+          {estoqueFilters.status.map((s) => (
+            <FilterTag key={s} label={STATUS_LABELS[s] ?? s} color="slate" />
+          ))}
           {estoqueFilters.fabricantes.map((f) => (
             <FilterTag key={f} label={f} color="blue" />
           ))}
@@ -265,15 +230,15 @@ export function EstoqueView() {
         </div>
       )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-2 gap-4 mb-5">
+      {/* Charts — 3 colunas */}
+      <div className="grid grid-cols-3 gap-4 mb-5">
         <HorizontalBarChart title="Itens por Fabricante" items={fabChart} color="#3b82f6" loading={loading} />
         <HorizontalBarChart title="Itens por Tipo" items={tipoChart} color="#f59e0b" loading={loading} />
+        <HorizontalBarChart title="Itens por CD" items={cdChart} color="#10b981" loading={loading} />
       </div>
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-card overflow-hidden">
-        {/* Table header + filters */}
         <div className="px-5 py-4 border-b border-slate-50">
           <div className="flex flex-wrap items-center gap-3">
             <h3 className="text-sm font-semibold text-slate-800 mr-2">Estoque Danificado</h3>
@@ -293,29 +258,6 @@ export function EstoqueView() {
                   <X size={11} />
                 </button>
               )}
-            </div>
-
-            {/* Status filter */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <FunnelSimple size={13} className="text-slate-400" />
-              {STATUS_ORDER.map((s) => (
-                <button
-                  key={s}
-                  onClick={() =>
-                    setSelectedStatus((prev) =>
-                      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]
-                    )
-                  }
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                    selectedStatus.includes(s)
-                      ? "bg-blue-500 text-white"
-                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                  }`}
-                >
-                  {STATUS_LABELS[s]}
-                  {statusCounts[s] ? ` (${statusCounts[s]})` : ""}
-                </button>
-              ))}
             </div>
 
             {/* Pagination */}
@@ -364,7 +306,7 @@ export function EstoqueView() {
                     <tr key={i}>
                       {Array.from({ length: 10 }).map((_, j) => (
                         <td key={j} className="px-4 py-3">
-                          <div className="skeleton h-3 w-full" style={{ width: `${50 + Math.random() * 50}%` }} />
+                          <div className="skeleton h-3" style={{ width: `${50 + (j * 13) % 50}%` }} />
                         </td>
                       ))}
                     </tr>
@@ -412,13 +354,14 @@ export function EstoqueView() {
 
 function FilterTag({ label, color = "blue" }: { label: string; color?: string }) {
   const colors: Record<string, string> = {
+    slate: "bg-slate-100 text-slate-600 border-slate-200",
     blue: "bg-blue-50 text-blue-700 border-blue-100",
     amber: "bg-amber-50 text-amber-700 border-amber-100",
     purple: "bg-purple-50 text-purple-700 border-purple-100",
     emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${colors[color] ?? colors.blue}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium ${colors[color] ?? colors.blue}`}>
       {label}
     </span>
   );

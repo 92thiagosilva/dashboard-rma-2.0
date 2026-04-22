@@ -150,6 +150,41 @@ export function Sidebar() {
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filtros</span>
             </div>
 
+            {/* Status */}
+            <FilterSection title="Status">
+              <div className="space-y-0.5">
+                {[
+                  { value: "1-RECEBIDO NO CD", label: "Recebido no CD", dot: "bg-blue-500" },
+                  { value: "2-SEPARADO PARA ENVIO", label: "Separado p/ Envio", dot: "bg-amber-500" },
+                  { value: "3-ENVIADO", label: "Enviado", dot: "bg-emerald-500" },
+                ].map(({ value, label, dot }) => (
+                  <label key={value} className="flex items-center gap-2 py-1 cursor-pointer group"
+                    onClick={() => setEstoqueFilters({
+                      status: estoqueFilters.status.includes(value)
+                        ? estoqueFilters.status.filter((s) => s !== value)
+                        : [...estoqueFilters.status, value],
+                    })}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                      estoqueFilters.status.includes(value) ? "bg-blue-500 border-blue-500" : "border-slate-500 group-hover:border-blue-400"
+                    }`}>
+                      {estoqueFilters.status.includes(value) && <div className="w-2 h-1 border-b-2 border-l-2 border-white rotate-[-45deg] mt-0.5" />}
+                    </div>
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
+                    <span className="text-xs text-slate-300 group-hover:text-white transition-colors">{label}</span>
+                  </label>
+                ))}
+              </div>
+              {estoqueFilters.status.length > 0 && (
+                <button
+                  onClick={() => setEstoqueFilters({ status: [] })}
+                  className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors mt-2"
+                >
+                  Limpar
+                </button>
+              )}
+            </FilterSection>
+
             {/* Previsão de Envio */}
             <FilterSection title="Previsão de Envio">
               <div className="space-y-1.5">

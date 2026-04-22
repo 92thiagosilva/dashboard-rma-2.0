@@ -43,6 +43,7 @@ export interface EstoqueFilters {
   fabricantes: string[];
   tipos: string[];
   empresas: string[];
+  status: string[];
   previsaoStart: string;
   previsaoEnd: string;
 }
@@ -57,6 +58,7 @@ export const DEFAULT_ESTOQUE_FILTERS: EstoqueFilters = {
   fabricantes: [],
   tipos: [],
   empresas: [],
+  status: [],
   previsaoStart: "",
   previsaoEnd: "",
 };
