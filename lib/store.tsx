@@ -54,36 +54,76 @@ interface DashboardStore {
   setLastImport: (d: string) => void;
 }
 
+// --- Cache utilities (sessionStorage — persiste no F5, limpa ao fechar a aba) ---
+const CACHE_V = "rma_v2";
+
+function cacheGet<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(`${CACHE_V}_${key}`);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function cacheSet(key: string, value: unknown) {
+  try {
+    sessionStorage.setItem(`${CACHE_V}_${key}`, JSON.stringify(value));
+  } catch {
+    // quota exceeded — ignora silenciosamente
+  }
+}
+
+function cacheClear() {
+  try {
+    const keys = Object.keys(sessionStorage).filter((k) => k.startsWith(CACHE_V));
+    keys.forEach((k) => sessionStorage.removeItem(k));
+  } catch {}
+}
+
+// ---
+
 const DashboardContext = createContext<DashboardStore | null>(null);
 
+const DEFAULT_FILTERS: FilterState = {
+  dateStart: "",
+  dateEnd: "",
+  stockStatus: "Todos",
+  fabricantes: [],
+  modelos: [],
+  classificacoes: [],
+};
+
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
-  const [rmaData, setRmaData] = useState<RMARow[]>([]);
-  const [vendasData, setVendasData] = useState<VendasRow[]>([]);
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    fabricantes: [],
-    modelos: [],
-    classificacoes: [],
-  });
-  const [filters, setFiltersState] = useState<FilterState>({
-    dateStart: "",
-    dateEnd: "",
-    stockStatus: "Todos",
-    fabricantes: [],
-    modelos: [],
-    classificacoes: [],
-  });
+  // Hidrata imediatamente do cache para evitar tela vazia no reload
+  const [rmaData, setRmaData] = useState<RMARow[]>(() => cacheGet<RMARow[]>("rma") ?? []);
+  const [vendasData, setVendasData] = useState<VendasRow[]>(() => cacheGet<VendasRow[]>("vendas") ?? []);
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>(
+    () => cacheGet<FilterOptions>("filterOptions") ?? { fabricantes: [], modelos: [], classificacoes: [] }
+  );
+  const [filters, setFiltersState] = useState<FilterState>(
+    () => cacheGet<FilterState>("filtersState") ?? DEFAULT_FILTERS
+  );
   const [crossFilter, setCrossFilterState] = useState<{ type: string | null; value: string | null }>({
     type: null,
     value: null,
   });
-  const [loading, setLoading] = useState(false);
-  const [lastImport, setLastImport] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  // Se já há cache, não mostra loading na abertura
+  const [loading, setLoading] = useState(() => {
+    const hasCached = !!cacheGet("rma");
+    return !hasCached;
+  });
+  const [lastImport, setLastImportState] = useState<string | null>(
+    () => cacheGet<string>("lastImport")
+  );
 
-  const fetchData = useCallback(async (f: FilterState) => {
+  const abortRef = useRef<AbortController | null>(null);
+  const initializedRef = useRef(false);
+
+  const fetchData = useCallback(async (f: FilterState, silent = false) => {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
-    setLoading(true);
+    if (!silent) setLoading(true);
 
     try {
       const params = new URLSearchParams();
@@ -97,43 +137,90 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch(`/api/analytics?${params}`, { signal: abortRef.current.signal });
       if (!res.ok) return;
       const data = await res.json();
+
       setRmaData(data.rma ?? []);
       setVendasData(data.vendas ?? []);
+
+      // Salva no cache apenas quando não há filtros ativos (dados "completos")
+      const noFilters =
+        !f.dateStart && !f.dateEnd &&
+        f.stockStatus === "Todos" &&
+        f.fabricantes.length === 0 &&
+        f.modelos.length === 0 &&
+        f.classificacoes.length === 0;
+      if (noFilters) {
+        cacheSet("rma", data.rma ?? []);
+        cacheSet("vendas", data.vendas ?? []);
+      }
     } catch {
-      // aborted or error — silently ignore
+      // aborted ou erro — ignora
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchFilterOptions = useCallback(async () => {
+  const fetchFilterOptions = useCallback(async (silent = false) => {
     try {
       const res = await fetch("/api/analytics?type=filters");
       if (!res.ok) return;
       const data = await res.json();
+
       setFilterOptions(data);
-      // Initialize with all selected
-      setFiltersState((prev) => ({
-        ...prev,
-        fabricantes: data.fabricantes ?? [],
-        modelos: data.modelos?.map((m: { produto: string | null }) => m.produto).filter(Boolean) ?? [],
-        classificacoes: data.classificacoes ?? [],
-      }));
+      cacheSet("filterOptions", data);
+
+      // Só inicializa filtros na primeira carga (para não sobrescrever seleção do usuário)
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        const cachedFilters = cacheGet<FilterState>("filtersState");
+        if (!cachedFilters || cachedFilters.fabricantes.length === 0) {
+          const initFilters: FilterState = {
+            ...DEFAULT_FILTERS,
+            fabricantes: data.fabricantes ?? [],
+            modelos: data.modelos?.map((m: { produto: string | null }) => m.produto).filter(Boolean) ?? [],
+            classificacoes: data.classificacoes ?? [],
+          };
+          setFiltersState(initFilters);
+          cacheSet("filtersState", initFilters);
+        }
+      }
     } catch {
-      // ignore
+      // ignora
     }
   }, []);
 
+  // Na montagem: se há cache, faz refresh silencioso em background
+  // Se não há cache, faz fetch normal com loading
   useEffect(() => {
-    fetchFilterOptions();
-  }, [fetchFilterOptions]);
+    const hasCached = !!cacheGet("rma");
+    fetchFilterOptions(hasCached);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Rebusca dados quando filtros mudam
+  // Na inicialização com cache: não mostra loading (silent)
+  const filtersInitialized = useRef(false);
   useEffect(() => {
-    fetchData(filters);
-  }, [filters, fetchData]);
+    if (!filtersInitialized.current) {
+      filtersInitialized.current = true;
+      // Primeira vez: silent se tiver cache
+      const hasCached = !!cacheGet("rma");
+      if (hasCached && filters.fabricantes.length > 0) {
+        fetchData(filters, true); // refresh silencioso em background
+      } else if (!hasCached) {
+        fetchData(filters, false);
+      }
+      return;
+    }
+    fetchData(filters, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   const setFilters = useCallback((partial: Partial<FilterState>) => {
-    setFiltersState((prev) => ({ ...prev, ...partial }));
+    setFiltersState((prev) => {
+      const next = { ...prev, ...partial };
+      cacheSet("filtersState", next);
+      return next;
+    });
   }, []);
 
   const setCrossFilter = useCallback((type: string, value: string) => {
@@ -144,8 +231,17 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setCrossFilterState({ type: null, value: null });
   }, []);
 
+  const setLastImport = useCallback((d: string) => {
+    setLastImportState(d);
+    cacheSet("lastImport", d);
+  }, []);
+
+  // Após importação: limpa cache e rebusca tudo
   const refreshData = useCallback(() => {
-    fetchFilterOptions();
+    cacheClear();
+    initializedRef.current = false;
+    filtersInitialized.current = false;
+    fetchFilterOptions(false);
   }, [fetchFilterOptions]);
 
   return (
