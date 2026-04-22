@@ -6,6 +6,8 @@ import { readExcelFile, parseVendas, parseRMA, parseEstoque, parseMTTF } from "@
 import { useToast } from "@/components/ui/Toast";
 import { useDashboard } from "@/lib/store";
 
+const BATCH_SIZE = 3000; // linhas por request — evita 413 em arquivos grandes
+
 const TYPE_LABELS: Record<string, string> = {
   vendas: "Relatório de Vendas",
   rma: "Relatório RMA",
@@ -86,18 +88,38 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
         else if (type === "estoque") parsedRows = parseEstoque(rows) as never;
         else if (type === "mttf") parsedRows = parseMTTF(rows) as never;
 
-        const res = await fetch("/api/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type, rows: parsedRows, filename: entry.file.name }),
-        });
+        // Envia em batches para evitar 413 Request Entity Too Large
+        let totalImported = 0;
+        const totalBatches = Math.ceil(parsedRows.length / BATCH_SIZE);
 
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? "Erro ao importar");
+        for (let b = 0; b < totalBatches; b++) {
+          const batch = parsedRows.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+          const isLastBatch = b === totalBatches - 1;
+
+          const res = await fetch("/api/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type,
+              rows: batch,
+              filename: entry.file.name,
+              recordHistory: isLastBatch,
+              totalRows: parsedRows.length,
+            }),
+          });
+
+          if (!res.ok) {
+            const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+            throw new Error(json.error ?? "Erro ao importar");
+          }
+
+          const json = await res.json();
+          totalImported += json.rowsImported ?? batch.length;
+        }
 
         setFiles((prev) => {
           const copy = [...prev];
-          copy[i] = { ...copy[i], status: "success", rows: json.rowsImported };
+          copy[i] = { ...copy[i], status: "success", rows: totalImported };
           return copy;
         });
       } catch (err) {

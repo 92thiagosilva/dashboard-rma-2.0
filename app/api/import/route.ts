@@ -10,14 +10,6 @@ function createAdminClient() {
   if (!url || !key) throw new Error("Supabase env vars ausentes");
   return createClient<Database>(url, key, {
     auth: { persistSession: false },
-    global: {
-      fetch: (input, init) =>
-        fetch(input, {
-          ...init,
-          // 60s timeout para inserções grandes
-          signal: AbortSignal.timeout(60_000),
-        }),
-    },
   });
 }
 
@@ -51,10 +43,12 @@ async function upsertChunks<T extends Record<string, unknown>>(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { type, rows, filename } = body as {
+    const { type, rows, filename, recordHistory = true, totalRows } = body as {
       type: string;
       rows: Record<string, unknown>[];
       filename: string;
+      recordHistory?: boolean;
+      totalRows?: number;
     };
 
     if (!type || !rows || !Array.isArray(rows)) {
@@ -89,11 +83,13 @@ export async function POST(req: NextRequest) {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase.from("import_history") as any).insert({
-      tipo: type,
-      filename,
-      rows_imported: rowsImported,
-    });
+    if (recordHistory) {
+      await (supabase.from("import_history") as any).insert({
+        tipo: type,
+        filename,
+        rows_imported: totalRows ?? rowsImported,
+      });
+    }
 
     console.log(`[import] Concluído: ${rowsImported} linhas inseridas em ${type}`);
     return NextResponse.json({ success: true, rowsImported });

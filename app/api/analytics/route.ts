@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ rma: rmaData ?? [], vendas: vendasData ?? [] });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    console.error("[analytics] Erro:", JSON.stringify(err, null, 2));
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
