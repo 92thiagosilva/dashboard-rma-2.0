@@ -56,28 +56,12 @@ export async function GET(req: NextRequest) {
     if (modelos.length > 0) rmaQuery = rmaQuery.in("produto", modelos);
     if (classificacoes.length > 0) rmaQuery = rmaQuery.in("classificacao", classificacoes);
 
-    // Derivar lista de produtos para filtrar vendas quando fabricante ou modelo estiver ativo
-    let vendasModelosFilter: string[] = [...modelos];
-    if (fabricantes.length > 0 && modelos.length === 0) {
-      // Busca todos os produtos associados aos fabricantes selecionados
-      const { data: fabProdutos } = await supabase
-        .from("rma")
-        .select("produto")
-        .in("fabricante", fabricantes);
-      const fabProductSet = new Set<string>();
-      (fabProdutos ?? []).forEach((r: { produto: string | null }) => {
-        if (r.produto) fabProductSet.add(r.produto);
-      });
-      vendasModelosFilter = Array.from(fabProductSet);
-    }
-
     // Build Vendas query — limit 120k para não travar sem filtros
+    // Filtro por fabricante/modelo é feito client-side (via cross-filter com rmaData)
+    // pois vendas.descricao_produto e rma.produto têm capitalização diferente
     let vendasQuery = supabase.from("vendas").select("*").limit(120000);
     if (dateStart) vendasQuery = vendasQuery.gte("data_venda", dateStart);
     if (dateEnd) vendasQuery = vendasQuery.lte("data_venda", dateEnd);
-    if (vendasModelosFilter.length > 0) {
-      vendasQuery = vendasQuery.in("descricao_produto", vendasModelosFilter);
-    }
 
     // Executa queries independentemente para evitar falha total se uma tabela tiver problema
     const [rmaResult, vendasResult] = await Promise.all([rmaQuery, vendasQuery]);

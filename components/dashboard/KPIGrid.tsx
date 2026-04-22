@@ -39,15 +39,36 @@ function KPICard({ label, value, sub, accent = "slate", loading }: KPICardProps)
 }
 
 export function KPIGrid() {
-  const { rmaData, vendasData, loading } = useDashboard();
+  const { rmaData, vendasData, loading, filters, filterOptions } = useDashboard();
 
   const kpis = useMemo(() => {
+    // Cross-filter vendas por fabricante/modelo apenas quando o usuário reduziu a seleção
+    // (não quando tudo está selecionado, pois vendas de produtos sem RMA seriam excluídas)
+    const fabricantesFiltered =
+      filterOptions.fabricantes.length > 0 &&
+      filters.fabricantes.length < filterOptions.fabricantes.length;
+    const modelosFiltered =
+      filterOptions.modelos.length > 0 &&
+      filters.modelos.length < filterOptions.modelos.length;
+
+    let filteredVendas = vendasData;
+    if ((fabricantesFiltered || modelosFiltered) && rmaData.length > 0) {
+      // Usa rmaData (já filtrado) para derivar produtos ativos — matching case-insensitive
+      const produtosAtivos = new Set(
+        rmaData.map((r) => r.produto?.toUpperCase().trim()).filter(Boolean)
+      );
+      filteredVendas = vendasData.filter((v) => {
+        const norm = v.descricao_produto?.toUpperCase().trim();
+        return norm ? produtosAtivos.has(norm) : false;
+      });
+    }
+
     // Total de pedidos = NFs únicas (uma NF pode ter vários inversores)
-    const nfSet = new Set(vendasData.map((v) => v.numero_fotus).filter(Boolean));
+    const nfSet = new Set(filteredVendas.map((v) => v.numero_fotus).filter(Boolean));
     const totalVendas = nfSet.size;
 
     // Total de inversores = soma das quantidades vendidas
-    const totalInversores = vendasData.reduce((s, v) => s + (v.quantidade_vendida ?? 0), 0);
+    const totalInversores = filteredVendas.reduce((s, v) => s + (v.quantidade_vendida ?? 0), 0);
 
     const totalRMA = rmaData.length;
 
