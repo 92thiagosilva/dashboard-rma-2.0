@@ -46,7 +46,10 @@ function FilterSection({
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { filters, setFilters, filterOptions, lastImport } = useDashboard();
+  const {
+    filters, setFilters, filterOptions, lastImport,
+    estoqueFilters, setEstoqueFilters, estoqueFilterOptions,
+  } = useDashboard();
   const [showImport, setShowImport] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
 
@@ -140,6 +143,151 @@ export function Sidebar() {
         </div>
 
         {/* Filters */}
+        {isEstoque && (
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            <div className="flex items-center gap-1.5 mb-4">
+              <SlidersHorizontal size={12} className="text-slate-500" />
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filtros</span>
+            </div>
+
+            {/* Previsão de Envio */}
+            <FilterSection title="Previsão de Envio">
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-500 uppercase tracking-wider block">De</label>
+                <input
+                  type="date"
+                  value={estoqueFilters.previsaoStart}
+                  onChange={(e) => setEstoqueFilters({ previsaoStart: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors"
+                />
+                <label className="text-[10px] text-slate-500 uppercase tracking-wider block mt-1">Até</label>
+                <input
+                  type="date"
+                  value={estoqueFilters.previsaoEnd}
+                  onChange={(e) => setEstoqueFilters({ previsaoEnd: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors"
+                />
+                {(estoqueFilters.previsaoStart || estoqueFilters.previsaoEnd) && (
+                  <button
+                    onClick={() => setEstoqueFilters({ previsaoStart: "", previsaoEnd: "" })}
+                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors mt-1"
+                  >
+                    Limpar datas
+                  </button>
+                )}
+              </div>
+            </FilterSection>
+
+            {/* Fabricante estoque */}
+            {estoqueFilterOptions.fabricantes.length > 0 && (
+              <FilterSection title="Fabricante">
+                <div className="flex gap-1.5 mb-2">
+                  <button
+                    onClick={() => setEstoqueFilters({ fabricantes: [...estoqueFilterOptions.fabricantes] })}
+                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setEstoqueFilters({ fabricantes: [] })}
+                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+                  >
+                    Limpar
+                  </button>
+                </div>
+                <div className="max-h-36 overflow-y-auto space-y-0.5">
+                  {estoqueFilterOptions.fabricantes.map((f) => (
+                    <CheckboxItem
+                      key={f}
+                      label={f}
+                      checked={estoqueFilters.fabricantes.includes(f)}
+                      onChange={(checked) =>
+                        setEstoqueFilters({
+                          fabricantes: checked
+                            ? [...estoqueFilters.fabricantes, f]
+                            : estoqueFilters.fabricantes.filter((x) => x !== f),
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </FilterSection>
+            )}
+
+            {/* Tipo estoque */}
+            {estoqueFilterOptions.tipos.length > 0 && (
+              <FilterSection title="Tipo">
+                <div className="flex gap-1.5 mb-2">
+                  <button
+                    onClick={() => setEstoqueFilters({ tipos: [...estoqueFilterOptions.tipos] })}
+                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setEstoqueFilters({ tipos: [] })}
+                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+                  >
+                    Limpar
+                  </button>
+                </div>
+                <div className="max-h-32 overflow-y-auto space-y-0.5">
+                  {estoqueFilterOptions.tipos.map((t) => (
+                    <CheckboxItem
+                      key={t}
+                      label={t}
+                      checked={estoqueFilters.tipos.includes(t)}
+                      onChange={(checked) =>
+                        setEstoqueFilters({
+                          tipos: checked
+                            ? [...estoqueFilters.tipos, t]
+                            : estoqueFilters.tipos.filter((x) => x !== t),
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </FilterSection>
+            )}
+
+            {/* CD / Empresa */}
+            {estoqueFilterOptions.empresas.length > 0 && (
+              <FilterSection title="CD / Empresa" defaultOpen={false}>
+                <div className="flex gap-1.5 mb-2">
+                  <button
+                    onClick={() => setEstoqueFilters({ empresas: [...estoqueFilterOptions.empresas] })}
+                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+                  >
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setEstoqueFilters({ empresas: [] })}
+                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+                  >
+                    Limpar
+                  </button>
+                </div>
+                <div className="max-h-32 overflow-y-auto space-y-0.5">
+                  {estoqueFilterOptions.empresas.map((e) => (
+                    <CheckboxItem
+                      key={e}
+                      label={e}
+                      checked={estoqueFilters.empresas.includes(e)}
+                      onChange={(checked) =>
+                        setEstoqueFilters({
+                          empresas: checked
+                            ? [...estoqueFilters.empresas, e]
+                            : estoqueFilters.empresas.filter((x) => x !== e),
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </FilterSection>
+            )}
+          </div>
+        )}
+
         {isAnalytics && (
           <div className="flex-1 overflow-y-auto px-4 py-4">
             <div className="flex items-center gap-1.5 mb-4">
