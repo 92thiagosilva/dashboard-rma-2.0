@@ -88,11 +88,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tipo de arquivo não reconhecido" }, { status: 400 });
     }
 
-    await supabase.from("import_history").insert({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from("import_history") as any).insert({
       tipo: type,
       filename,
       rows_imported: rowsImported,
-    } as never);
+    });
 
     console.log(`[import] Concluído: ${rowsImported} linhas inseridas em ${type}`);
     return NextResponse.json({ success: true, rowsImported });
