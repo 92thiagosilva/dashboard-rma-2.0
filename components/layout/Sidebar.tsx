@@ -55,13 +55,21 @@ export function Sidebar() {
 
   const filteredModelos = useMemo(() => {
     const search = modelSearch.toLowerCase();
-    return filterOptions.modelos.filter(
-      (m) =>
-        !search ||
-        (m.produto ?? "").toLowerCase().includes(search) ||
-        (m.fabricante ?? "").toLowerCase().includes(search)
-    );
-  }, [filterOptions.modelos, modelSearch]);
+    return filterOptions.modelos.filter((m) => {
+      // Cascade: only show models for selected fabricantes
+      if (filters.fabricantes.length > 0 && !filters.fabricantes.includes(m.fabricante ?? "")) {
+        return false;
+      }
+      // Search filter
+      if (search) {
+        return (
+          (m.produto ?? "").toLowerCase().includes(search) ||
+          (m.fabricante ?? "").toLowerCase().includes(search)
+        );
+      }
+      return true;
+    });
+  }, [filterOptions.modelos, modelSearch, filters.fabricantes]);
 
   const allFabsSelected = filterOptions.fabricantes.length > 0 &&
     filterOptions.fabricantes.every((f) => filters.fabricantes.includes(f));
