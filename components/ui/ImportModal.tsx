@@ -30,6 +30,7 @@ interface FileStatus {
   status: "pending" | "uploading" | "success" | "error";
   rows?: number;
   error?: string;
+  progress?: string; // ex: "Batch 3/34"
 }
 
 export function ImportModal({ onClose }: { onClose: () => void }) {
@@ -96,18 +97,35 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
           const batch = parsedRows.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
           const isLastBatch = b === totalBatches - 1;
 
-          const res = await fetch("/api/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type,
-              rows: batch,
-              filename: entry.file.name,
-              recordHistory: isLastBatch,
-              totalRows: parsedRows.length,
-              truncateFirst: b === 0, // limpa dados anteriores antes do primeiro batch
-            }),
+          // Atualiza progresso visível ao usuário
+          setFiles((prev) => {
+            const copy = [...prev];
+            copy[i] = { ...copy[i], progress: `${b + 1}/${totalBatches}` };
+            return copy;
           });
+
+          // Timeout de 90s por batch (evita travar para sempre)
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 90_000);
+
+          let res: Response;
+          try {
+            res = await fetch("/api/import", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: controller.signal,
+              body: JSON.stringify({
+                type,
+                rows: batch,
+                filename: entry.file.name,
+                recordHistory: isLastBatch,
+                totalRows: parsedRows.length,
+                truncateFirst: b === 0, // limpa dados anteriores antes do primeiro batch
+              }),
+            });
+          } finally {
+            clearTimeout(timeout);
+          }
 
           if (!res.ok) {
             const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
@@ -206,6 +224,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
                     <p className="text-sm font-medium text-slate-800 truncate">{f.file.name}</p>
                     <p className={`text-xs ${TYPE_COLORS[f.type] ?? "text-slate-400"}`}>
                       {TYPE_LABELS[f.type] ?? f.type}
+                      {f.status === "uploading" && f.progress ? ` — batch ${f.progress}` : ""}
                       {f.rows ? ` — ${f.rows.toLocaleString("pt-BR")} linhas` : ""}
                       {f.error ? ` — ${f.error}` : ""}
                     </p>
