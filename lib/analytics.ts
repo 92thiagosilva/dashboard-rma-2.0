@@ -145,7 +145,7 @@ export function calcularConfiabilidadeInsights(
         fabricante: fab,
         mttfMedio,
         totalRMA: rmaPorFab[fab] ?? 0,
-        nivel: mttfMedio < 180 ? "critico" : mttfMedio < 730 ? "atencao" : "bom",
+        nivel: (mttfMedio < 180 ? "critico" : mttfMedio < 730 ? "atencao" : "bom") as "critico" | "atencao" | "bom",
       };
     })
     .sort((a, b) => b.mttfMedio - a.mttfMedio)

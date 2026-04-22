@@ -70,7 +70,8 @@ export async function POST(req: NextRequest) {
       };
       const tableName = tableMap[type];
       if (tableName) {
-        const { error: truncErr } = await supabase.rpc("truncate_import_table", { p_table: tableName });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: truncErr } = await (supabase as any).rpc("truncate_import_table", { p_table: tableName });
         if (truncErr) {
           console.error("[import] Erro ao truncar tabela:", truncErr);
           // Não falha — continua com insert mesmo sem truncar
