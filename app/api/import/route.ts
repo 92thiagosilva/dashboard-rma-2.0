@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       tipo: type,
       filename,
       rows_imported: rowsImported,
-    });
+    } as never);
 
     console.log(`[import] Concluído: ${rowsImported} linhas inseridas em ${type}`);
     return NextResponse.json({ success: true, rowsImported });
