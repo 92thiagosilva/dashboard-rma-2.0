@@ -54,6 +54,7 @@ export type Database = {
           nf_retorno: string | null;
           nf_envio_fabricante: string | null;
           data_envio: string | null;
+          custo_produto: number | null;
           imported_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["estoque_danificado"]["Row"], "id" | "imported_at">;

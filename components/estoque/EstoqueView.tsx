@@ -22,6 +22,7 @@ interface EstoqueRow {
   nf_retorno: string | null;
   nf_envio_fabricante: string | null;
   data_envio: string | null;
+  custo_produto: number | null;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -135,6 +136,7 @@ export function EstoqueView() {
     separado: filteredData.filter((r) => r.status === "2-SEPARADO PARA ENVIO").length,
     enviado: filteredData.filter((r) => r.status === "3-ENVIADO").length,
     comPrevisao: filteredData.filter((r) => r.previsao_envio).length,
+    valorTotal: filteredData.reduce((sum, r) => sum + (r.custo_produto ?? 0), 0),
   }), [filteredData]);
 
   const fabChart = useMemo(() =>
@@ -165,6 +167,23 @@ export function EstoqueView() {
     ).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value, displayValue: value })),
   [filteredData]);
 
+  const custoFabChart = useMemo(() =>
+    Object.entries(
+      filteredData.reduce<Record<string, number>>((acc, r) => {
+        if (r.fabricante && r.custo_produto) {
+          acc[r.fabricante] = (acc[r.fabricante] ?? 0) + r.custo_produto;
+        }
+        return acc;
+      }, {})
+    )
+      .sort((a, b) => b[1] - a[1])
+      .map(([label, value]) => ({
+        label,
+        value,
+        displayValue: value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }),
+      })),
+  [filteredData]);
+
   // Count active sidebar filters for tag strip
   const activeSidebarFilters =
     estoqueFilters.status.length +
@@ -180,26 +199,33 @@ export function EstoqueView() {
   return (
     <div className="max-w-[1400px] mx-auto">
       {/* KPIs */}
-      <div className="grid grid-cols-5 gap-4 mb-5">
+      <div className="grid grid-cols-6 gap-3 mb-5">
         {[
-          { label: "Total Danificado", value: kpis.total, accent: "slate" },
-          { label: "Recebido no CD", value: kpis.recebido, accent: "blue" },
-          { label: "Separado p/ Envio", value: kpis.separado, accent: "amber" },
-          { label: "Enviado ao Fabricante", value: kpis.enviado, accent: "green" },
-          { label: "Com Prev. de Envio", value: kpis.comPrevisao, accent: "purple" },
-        ].map(({ label, value, accent }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-100 p-5 shadow-card">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{label}</p>
+          { label: "Total Danificado", value: kpis.total, display: kpis.total.toLocaleString("pt-BR"), accent: "slate" },
+          { label: "Recebido no CD", value: kpis.recebido, display: kpis.recebido.toLocaleString("pt-BR"), accent: "blue" },
+          { label: "Separado p/ Envio", value: kpis.separado, display: kpis.separado.toLocaleString("pt-BR"), accent: "amber" },
+          { label: "Enviado ao Fabricante", value: kpis.enviado, display: kpis.enviado.toLocaleString("pt-BR"), accent: "green" },
+          { label: "Com Prev. de Envio", value: kpis.comPrevisao, display: kpis.comPrevisao.toLocaleString("pt-BR"), accent: "purple" },
+          {
+            label: "Valor em Estoque",
+            value: kpis.valorTotal,
+            display: kpis.valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }),
+            accent: "red",
+          },
+        ].map(({ label, display, accent }) => (
+          <div key={label} className="bg-white rounded-xl border border-slate-100 p-4 shadow-card">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 leading-tight">{label}</p>
             {loading ? (
-              <div className="skeleton h-7 w-16" />
+              <div className="skeleton h-6 w-16" />
             ) : (
-              <p className={`text-2xl font-bold tracking-tight ${
+              <p className={`text-xl font-bold tracking-tight ${
                 accent === "blue" ? "text-blue-500"
                 : accent === "amber" ? "text-amber-500"
                 : accent === "green" ? "text-emerald-500"
                 : accent === "purple" ? "text-purple-500"
+                : accent === "red" ? "text-red-500"
                 : "text-slate-900"
-              }`}>{value.toLocaleString("pt-BR")}</p>
+              }`}>{display}</p>
             )}
           </div>
         ))}
@@ -230,9 +256,10 @@ export function EstoqueView() {
         </div>
       )}
 
-      {/* Charts — 3 colunas */}
-      <div className="grid grid-cols-3 gap-4 mb-5">
+      {/* Charts — 2×2 */}
+      <div className="grid grid-cols-2 gap-4 mb-5">
         <HorizontalBarChart title="Itens por Fabricante" items={fabChart} color="#3b82f6" loading={loading} />
+        <HorizontalBarChart title="Valor por Fabricante (R$)" items={custoFabChart} color="#ef4444" loading={loading} />
         <HorizontalBarChart title="Itens por Tipo" items={tipoChart} color="#f59e0b" loading={loading} />
         <HorizontalBarChart title="Itens por CD" items={cdChart} color="#10b981" loading={loading} />
       </div>
@@ -293,7 +320,7 @@ export function EstoqueView() {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50/80">
-                {["Produto", "Fabricante", "SN", "Tipo", "Status", "CD / Empresa", "SAC", "Prev. Envio", "NF Retorno", "Data Envio"].map((h) => (
+                {["Produto", "Fabricante", "SN", "Tipo", "Status", "CD / Empresa", "SAC", "Custo", "Prev. Envio", "NF Retorno", "Data Envio"].map((h) => (
                   <th key={h} className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -304,7 +331,7 @@ export function EstoqueView() {
               {loading
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 10 }).map((_, j) => (
+                      {Array.from({ length: 11 }).map((_, j) => (
                         <td key={j} className="px-4 py-3">
                           <div className="skeleton h-3" style={{ width: `${50 + (j * 13) % 50}%` }} />
                         </td>
@@ -326,6 +353,11 @@ export function EstoqueView() {
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{r.cd ?? r.empresa ?? "—"}</td>
                       <td className="px-4 py-3 text-xs font-mono text-slate-500 text-center">{r.sac || "—"}</td>
+                      <td className="px-4 py-3 text-xs font-mono text-right whitespace-nowrap font-semibold text-slate-700">
+                        {r.custo_produto != null
+                          ? r.custo_produto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                          : "—"}
+                      </td>
                       <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">{formatDate(r.previsao_envio)}</td>
                       <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">{r.nf_retorno || "—"}</td>
                       <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">{formatDate(r.data_envio)}</td>
@@ -333,7 +365,7 @@ export function EstoqueView() {
                   ))}
               {!loading && pageData.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-16 text-center">
+                  <td colSpan={11} className="px-4 py-16 text-center">
                     <Package size={36} className="mx-auto text-slate-200 mb-3" />
                     <p className="text-sm text-slate-400">Nenhum item encontrado</p>
                     <p className="text-xs text-slate-300 mt-1">

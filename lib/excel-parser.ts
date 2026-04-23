@@ -105,6 +105,7 @@ export function parseEstoque(rows: Record<string, unknown>[]): EstoqueInsert[] {
       nf_retorno: String(n["NF DE RETORNO"] ?? "").trim() || null,
       nf_envio_fabricante: String(n["NF DE ENVIO P/ FABRICANTE"] ?? "").trim() || null,
       data_envio: parseExcelDate(n["DATA DE ENVIO"]),
+      custo_produto: n["CUSTO DO PRODUTO"] != null ? Number(n["CUSTO DO PRODUTO"]) || null : null,
     };
   });
 }
