@@ -4,9 +4,11 @@ import { useState, useMemo } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ChartBar, Package, UploadSimple, SlidersHorizontal, CaretDown, CaretUp,
+  Trash, Warning, SpinnerGap,
 } from "@phosphor-icons/react";
 import { useDashboard } from "@/lib/store";
 import { ImportModal } from "@/components/ui/ImportModal";
+import { useToast } from "@/components/ui/Toast";
 
 function CheckboxItem({
   label, checked, onChange,
@@ -49,12 +51,40 @@ export function Sidebar() {
   const {
     filters, setFilters, filterOptions, lastImport,
     estoqueFilters, setEstoqueFilters, estoqueFilterOptions,
+    refreshData,
   } = useDashboard();
+  const { show: showToast } = useToast();
   const [showImport, setShowImport] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const isAnalytics = pathname === "/";
   const isEstoque = pathname === "/estoque";
+
+  const scope = isEstoque ? "estoque" : "analytics";
+  const scopeLabel = isEstoque ? "Estoque" : "Analytics (RMA + Vendas)";
+
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      const res = await fetch("/api/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro ao limpar");
+      showToast(`Dados de ${scopeLabel} removidos com sucesso.`, "success");
+      refreshData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      showToast(`Erro ao limpar: ${msg}`, "error");
+    } finally {
+      setClearing(false);
+      setConfirmClear(false);
+    }
+  };
 
   const filteredModelos = useMemo(() => {
     const search = modelSearch.toLowerCase();
@@ -123,8 +153,8 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Import button */}
-        <div className="px-4 py-3 border-b border-slate-800/80">
+        {/* Import + Clear buttons */}
+        <div className="px-4 py-3 border-b border-slate-800/80 space-y-2">
           <button
             onClick={() => setShowImport(true)}
             className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors"
@@ -132,8 +162,48 @@ export function Sidebar() {
             <UploadSimple size={13} weight="bold" />
             Importar Planilhas
           </button>
+
+          {/* Clear data — dois estágios */}
+          {!confirmClear ? (
+            <button
+              onClick={() => setConfirmClear(true)}
+              className="w-full flex items-center justify-center gap-2 py-1.5 px-3 bg-transparent border border-slate-700 hover:border-red-500/60 hover:bg-red-950/30 text-slate-500 hover:text-red-400 text-xs font-medium rounded-lg transition-all"
+            >
+              <Trash size={12} weight="bold" />
+              Limpar dados
+            </button>
+          ) : (
+            <div className="rounded-lg border border-red-500/40 bg-red-950/30 p-2.5 space-y-2">
+              <div className="flex items-start gap-1.5">
+                <Warning size={12} weight="fill" className="text-red-400 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-red-300 leading-relaxed">
+                  Remove <span className="font-semibold">{scopeLabel}</span> do banco.
+                  Esta ação não pode ser desfeita.
+                </p>
+              </div>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => setConfirmClear(false)}
+                  disabled={clearing}
+                  className="flex-1 py-1 text-[10px] font-medium text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-md transition-colors disabled:opacity-40"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleClear}
+                  disabled={clearing}
+                  className="flex-1 py-1 text-[10px] font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:opacity-40 flex items-center justify-center gap-1"
+                >
+                  {clearing
+                    ? <><SpinnerGap size={10} className="animate-spin" /> Limpando...</>
+                    : <><Trash size={10} /> Confirmar</>}
+                </button>
+              </div>
+            </div>
+          )}
+
           {lastImport && (
-            <p className="text-[10px] text-slate-500 mt-2 text-center">
+            <p className="text-[10px] text-slate-500 text-center">
               Última importação: {new Date(lastImport).toLocaleString("pt-BR", {
                 day: "2-digit", month: "2-digit", year: "numeric",
                 hour: "2-digit", minute: "2-digit",
