@@ -111,11 +111,17 @@ export function EstoqueView() {
         return emp && estoqueFilters.empresas.includes(emp);
       });
 
-    if (estoqueFilters.previsaoStart)
-      rows = rows.filter((r) => r.previsao_envio && r.previsao_envio >= estoqueFilters.previsaoStart);
-
-    if (estoqueFilters.previsaoEnd)
-      rows = rows.filter((r) => r.previsao_envio && r.previsao_envio <= estoqueFilters.previsaoEnd);
+    // Filtro de data: usa previsao_envio para itens não-enviados,
+    // ou data_envio para itens já enviados (status 3-ENVIADO onde previsao pode ser null)
+    if (estoqueFilters.previsaoStart || estoqueFilters.previsaoEnd) {
+      rows = rows.filter((r) => {
+        const dateRef = r.previsao_envio ?? r.data_envio;
+        if (!dateRef) return true; // sem data: mantém (não exclui)
+        if (estoqueFilters.previsaoStart && dateRef < estoqueFilters.previsaoStart) return false;
+        if (estoqueFilters.previsaoEnd   && dateRef > estoqueFilters.previsaoEnd)   return false;
+        return true;
+      });
+    }
 
     if (search.trim()) {
       const q = search.toLowerCase().trim();

@@ -255,8 +255,8 @@ export function Sidebar() {
               )}
             </FilterSection>
 
-            {/* Previsão de Envio */}
-            <FilterSection title="Previsão de Envio">
+            {/* Previsão de Envio / Data de Envio */}
+            <FilterSection title="Previsão / Data de Envio">
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-500 uppercase tracking-wider block">De</label>
                 <input
