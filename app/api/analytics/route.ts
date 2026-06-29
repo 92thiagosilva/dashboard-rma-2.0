@@ -19,6 +19,8 @@ export async function GET(req: NextRequest) {
       const { data, error } = await (supabase as any).rpc("rma_taxa_por_coorte_venda", {
         p_date_start: dateStart || null,
         p_date_end: dateEnd || null,
+        p_fabricantes: fabricantes.length > 0 ? fabricantes : null,
+        p_modelos: modelos.length > 0 ? modelos : null,
       });
 
       if (error) {

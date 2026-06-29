@@ -58,6 +58,18 @@ export function KPIGrid() {
         const params = new URLSearchParams({ type: "cohort" });
         if (filters.dateStart) params.set("dateStart", filters.dateStart);
         if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
+
+        // Só passa fabricantes/modelos quando o usuário reduziu a seleção (mesmo lógica do KPI global)
+        const fabricantesFiltered =
+          filterOptions.fabricantes.length > 0 &&
+          filters.fabricantes.length < filterOptions.fabricantes.length;
+        const modelosFiltered =
+          filterOptions.modelos.length > 0 &&
+          filters.modelos.length < filterOptions.modelos.length;
+
+        if (fabricantesFiltered) params.set("fabricantes", filters.fabricantes.join(","));
+        if (modelosFiltered) params.set("modelos", filters.modelos.join(","));
+
         const res = await fetch(`/api/analytics?${params}`);
         if (!res.ok || cancelled) return;
         const data: CohortData = await res.json();
@@ -70,7 +82,8 @@ export function KPIGrid() {
     };
     fetch_();
     return () => { cancelled = true; };
-  }, [filters.dateStart, filters.dateEnd]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.dateStart, filters.dateEnd, filters.fabricantes.join(","), filters.modelos.join(","), filterOptions.fabricantes.length, filterOptions.modelos.length]);
 
   const kpis = useMemo(() => {
     // Cross-filter vendas por fabricante/modelo apenas quando o usuário reduziu a seleção
