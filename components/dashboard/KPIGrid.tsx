@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useDashboard } from "@/lib/store";
 
 interface KPICardProps {
@@ -38,8 +38,39 @@ function KPICard({ label, value, sub, accent = "slate", loading }: KPICardProps)
   );
 }
 
+interface CohortData {
+  linkedRMACount: number;
+  totalInversores: number;
+  taxa: number;
+}
+
 export function KPIGrid() {
   const { rmaData, vendasData, loading, filters, filterOptions } = useDashboard();
+
+  const [cohort, setCohort] = useState<CohortData | null>(null);
+  const [cohortLoading, setCohortLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetch_ = async () => {
+      setCohortLoading(true);
+      try {
+        const params = new URLSearchParams({ type: "cohort" });
+        if (filters.dateStart) params.set("dateStart", filters.dateStart);
+        if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
+        const res = await fetch(`/api/analytics?${params}`);
+        if (!res.ok || cancelled) return;
+        const data: CohortData = await res.json();
+        if (!cancelled) setCohort(data);
+      } catch {
+        // ignora
+      } finally {
+        if (!cancelled) setCohortLoading(false);
+      }
+    };
+    fetch_();
+    return () => { cancelled = true; };
+  }, [filters.dateStart, filters.dateEnd]);
 
   const kpis = useMemo(() => {
     // Cross-filter vendas por fabricante/modelo apenas quando o usuário reduziu a seleção
@@ -98,6 +129,10 @@ export function KPIGrid() {
     return { totalVendas, totalInversores, totalRMA, taxa, estados, rmaDia, rmaMes };
   }, [rmaData, vendasData]);
 
+  const cohortTaxa = cohort?.taxa ?? 0;
+  const cohortAccent =
+    cohortTaxa > 5 ? "text-red-500" : cohortTaxa > 2 ? "text-amber-500" : "text-emerald-500";
+
   return (
     <div className="grid grid-cols-3 gap-4 mb-5">
       <KPICard
@@ -114,7 +149,7 @@ export function KPIGrid() {
         loading={loading}
       />
       <KPICard
-        label="Taxa de Falha"
+        label="Taxa de Falha (período)"
         value={`${kpis.taxa.toFixed(2)}%`}
         sub={`${kpis.totalRMA} RMAs / ${kpis.totalInversores.toLocaleString("pt-BR")} inversores`}
         accent={kpis.taxa > 5 ? "red" : kpis.taxa > 2 ? "amber" : "green"}
@@ -135,6 +170,53 @@ export function KPIGrid() {
         value={Math.round(kpis.rmaMes).toLocaleString("pt-BR")}
         loading={loading}
       />
+
+      {/* Taxa de Falha por Coorte de Venda — card full-width */}
+      <div className="col-span-3 bg-white rounded-xl border border-slate-100 border-l-4 border-l-amber-400 p-5 shadow-card transition-all hover:shadow-card-hover">
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">
+              Taxa de Falha por Coorte de Venda
+            </p>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              RMAs de qualquer época vinculados às vendas do período via Nro. Fotus —{" "}
+              {filters.dateStart || filters.dateEnd
+                ? `${filters.dateStart || "início"} → ${filters.dateEnd || "hoje"}`
+                : "todos os períodos"}
+            </p>
+          </div>
+          <div className="flex items-center gap-8 shrink-0">
+            {cohortLoading ? (
+              <>
+                <div className="text-right space-y-1"><div className="skeleton h-7 w-20" /><div className="skeleton h-3 w-16" /></div>
+                <div className="text-right space-y-1"><div className="skeleton h-6 w-16" /><div className="skeleton h-3 w-14" /></div>
+                <div className="text-right space-y-1"><div className="skeleton h-6 w-20" /><div className="skeleton h-3 w-20" /></div>
+              </>
+            ) : (
+              <>
+                <div className="text-right">
+                  <p className={`text-2xl font-bold tracking-tight ${cohortAccent}`}>
+                    {cohortTaxa.toFixed(2)}%
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">taxa por coorte</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-slate-800">
+                    {(cohort?.linkedRMACount ?? 0).toLocaleString("pt-BR")}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">RMAs vinculados</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-slate-800">
+                    {(cohort?.totalInversores ?? 0).toLocaleString("pt-BR")}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">inversores no período</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

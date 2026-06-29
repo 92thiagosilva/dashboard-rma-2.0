@@ -14,6 +14,31 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
 
   try {
+    if (type === "cohort") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("rma_taxa_por_coorte_venda", {
+        p_date_start: dateStart || null,
+        p_date_end: dateEnd || null,
+      });
+
+      if (error) {
+        console.error("[analytics/cohort] Erro no RPC:", error);
+        return NextResponse.json({ linkedRMACount: 0, totalInversores: 0, taxa: 0 });
+      }
+
+      const result = data as { linked_rma_count: number; total_inversores: number };
+      const taxa =
+        result.total_inversores > 0
+          ? (result.linked_rma_count / result.total_inversores) * 100
+          : 0;
+
+      return NextResponse.json({
+        linkedRMACount: result.linked_rma_count ?? 0,
+        totalInversores: result.total_inversores ?? 0,
+        taxa,
+      });
+    }
+
     if (type === "filters") {
       const sb = supabase as ReturnType<typeof createServerClient>;
       const [r1, r2, r3] = await Promise.all([
