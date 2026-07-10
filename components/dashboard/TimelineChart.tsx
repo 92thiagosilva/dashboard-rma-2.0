@@ -32,32 +32,52 @@ const CustomTooltip = ({ active, payload, label }: {
 };
 
 export function TimelineChart() {
-  const { rmaData, vendasData, loading } = useDashboard();
+  const { rmaData, vendasData, loading, filters, filterOptions } = useDashboard();
 
   const data = useMemo(() => {
-    const timeline: Record<string, { mes: string; vendas: number; rma: number }> = {};
+    // Aplica o mesmo cross-filter de fabricante/modelo do KPIGrid
+    const fabricantesFiltered =
+      filterOptions.fabricantes.length > 0 &&
+      filters.fabricantes.length < filterOptions.fabricantes.length;
+    const modelosFiltered =
+      filterOptions.modelos.length > 0 &&
+      filters.modelos.length < filterOptions.modelos.length;
+
+    let filteredVendas = vendasData;
+    if ((fabricantesFiltered || modelosFiltered) && rmaData.length > 0) {
+      const produtosAtivos = new Set(
+        rmaData.map((r) => r.produto?.toUpperCase().trim()).filter(Boolean)
+      );
+      filteredVendas = vendasData.filter((v) => {
+        const norm = v.descricao_produto?.toUpperCase().trim();
+        return norm ? produtosAtivos.has(norm) : false;
+      });
+    }
+
+    // sacSet por mês para deduplicar igual ao KPI (um SAC = um RMA)
+    const timeline: Record<string, { mes: string; vendas: number; sacSet: Set<string> }> = {};
 
     let minRmaMes: string | null = null;
     rmaData.forEach((r) => {
       if (!r.data_criacao) return;
       const mes = r.data_criacao.slice(0, 7);
       if (!minRmaMes || mes < minRmaMes) minRmaMes = mes;
-      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, rma: 0 };
-      timeline[mes].rma += 1;
+      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, sacSet: new Set() };
+      timeline[mes].sacSet.add(r.sac ?? `__id_${r.id}`);
     });
 
-    vendasData.forEach((v) => {
+    filteredVendas.forEach((v) => {
       if (!v.data_venda) return;
       const mes = v.data_venda.slice(0, 7);
       if (minRmaMes && mes < minRmaMes) return;
-      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, rma: 0 };
+      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, sacSet: new Set() };
       timeline[mes].vendas += v.quantidade_vendida ?? 0;
     });
 
     return Object.values(timeline)
       .sort((a, b) => a.mes.localeCompare(b.mes))
-      .map((d) => ({ ...d, label: formatMonthLabel(d.mes) }));
-  }, [rmaData, vendasData]);
+      .map((d) => ({ mes: d.mes, vendas: d.vendas, rma: d.sacSet.size, label: formatMonthLabel(d.mes) }));
+  }, [rmaData, vendasData, filters, filterOptions]);
 
   if (loading) {
     return <div className="bg-white rounded-xl border border-slate-100 shadow-card p-5 col-span-2 h-72 skeleton" />;
