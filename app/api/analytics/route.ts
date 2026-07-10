@@ -83,15 +83,26 @@ export async function GET(req: NextRequest) {
     if (modelos.length > 0) rmaQuery = rmaQuery.in("produto", modelos);
     if (classificacoes.length > 0) rmaQuery = rmaQuery.in("classificacao", classificacoes);
 
-    // Build Vendas query — limit 120k para não travar sem filtros
-    // Filtro por fabricante/modelo é feito client-side (via cross-filter com rmaData)
-    // pois vendas.descricao_produto e rma.produto têm capitalização diferente
-    let vendasQuery = supabase.from("vendas").select("*").limit(120000);
-    if (dateStart) vendasQuery = vendasQuery.gte("data_venda", dateStart);
-    if (dateEnd) vendasQuery = vendasQuery.lte("data_venda", dateEnd);
+    // Build Vendas query — quando fabricante/modelo está filtrado, usa RPC server-side
+    // para evitar: (1) limite de 120k rows, (2) mismatch de case nos nomes de produto.
+    // Sem filtro: query direta com limit 120k (todos os fabricantes).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vendasPromise = (fabricantes.length > 0 || modelos.length > 0)
+      ? (supabase as any).rpc("get_vendas_filtered", {
+          p_date_start: dateStart || null,
+          p_date_end:   dateEnd   || null,
+          p_fabricantes: fabricantes.length > 0 ? fabricantes : null,
+          p_modelos:     modelos.length > 0     ? modelos     : null,
+        })
+      : (() => {
+          let q = supabase.from("vendas").select("*").limit(120000);
+          if (dateStart) q = q.gte("data_venda", dateStart);
+          if (dateEnd)   q = q.lte("data_venda", dateEnd);
+          return q;
+        })();
 
     // Executa queries independentemente para evitar falha total se uma tabela tiver problema
-    const [rmaResult, vendasResult] = await Promise.all([rmaQuery, vendasQuery]);
+    const [rmaResult, vendasResult] = await Promise.all([rmaQuery, vendasPromise]);
 
     if (rmaResult.error) {
       console.error("[analytics] Erro na query rma:", rmaResult.error);
