@@ -160,6 +160,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
   const abortRef = useRef<AbortController | null>(null);
   const initializedRef = useRef(false);
+  // Ref para filterOptions — permite que fetchData (deps=[]) acesse o valor mais recente
+  const filterOptionsRef = useRef<FilterOptions>({ fabricantes: [], modelos: [], classificacoes: [] });
+  filterOptionsRef.current = filterOptions;
 
   const fetchData = useCallback(async (f: FilterState, silent = false) => {
     if (abortRef.current) abortRef.current.abort();
@@ -167,12 +170,19 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     if (!silent) setLoading(true);
 
     try {
+      // Só envia fabricantes/modelos quando o usuário reduziu a seleção (subconjunto real).
+      // Com todos selecionados, não envia parâmetro → API usa query direta sem join com rma,
+      // evitando excluir vendas de produtos que nunca tiveram RMA.
+      const opts = filterOptionsRef.current;
+      const fabTrulyFiltered = opts.fabricantes.length > 0 && f.fabricantes.length < opts.fabricantes.length;
+      const modTrulyFiltered = opts.modelos.length > 0 && f.modelos.length < opts.modelos.length;
+
       const params = new URLSearchParams();
       if (f.dateStart) params.set("dateStart", f.dateStart);
       if (f.dateEnd) params.set("dateEnd", f.dateEnd);
       if (f.stockStatus !== "Todos") params.set("stockStatus", f.stockStatus);
-      if (f.fabricantes.length > 0) params.set("fabricantes", f.fabricantes.join(","));
-      if (f.modelos.length > 0) params.set("modelos", f.modelos.join(","));
+      if (fabTrulyFiltered) params.set("fabricantes", f.fabricantes.join(","));
+      if (modTrulyFiltered) params.set("modelos", f.modelos.join(","));
       // Classificação NÃO é enviada ao servidor — é calculada client-side
       // via calcularClassificacao(tipo_alimentacao, potencia)
 
