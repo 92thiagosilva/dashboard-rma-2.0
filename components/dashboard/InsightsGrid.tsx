@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDashboard } from "@/lib/store";
 import { calcularSolarInsights, calcularConfiabilidadeInsights } from "@/lib/analytics";
-import { ArrowUp, ArrowDown, SolarPanel, Thermometer, Warning, Lightning, Shield, ChartBar } from "@phosphor-icons/react";
+import { ArrowUp, ArrowDown, SolarPanel, Thermometer, Warning, Lightning, Shield, ChartBar, MagnifyingGlassPlus } from "@phosphor-icons/react";
+import { InsightDetailModal, type InsightSelection } from "./InsightDetailModal";
 
 interface InsightCardProps {
   label: string;
@@ -11,9 +12,10 @@ interface InsightCardProps {
   sub: string;
   color: "purple" | "red" | "amber" | "blue";
   loading?: boolean;
+  onClick?: () => void;
 }
 
-function InsightCard({ label, value, sub, color, loading }: InsightCardProps) {
+function InsightCard({ label, value, sub, color, loading, onClick }: InsightCardProps) {
   const borderColors = {
     purple: "border-l-purple-500",
     red: "border-l-red-500",
@@ -37,8 +39,23 @@ function InsightCard({ label, value, sub, color, loading }: InsightCardProps) {
     );
   }
 
+  const clickable = !!onClick;
   return (
-    <div className={`bg-white rounded-xl border border-slate-100 border-l-4 ${borderColors[color]} p-4 shadow-card`}>
+    <div
+      onClick={onClick}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick!(); } } : undefined}
+      className={`group relative bg-white rounded-xl border border-slate-100 border-l-4 ${borderColors[color]} p-4 shadow-card ${
+        clickable ? "cursor-pointer transition-all hover:shadow-card-hover hover:-translate-y-0.5" : ""
+      }`}
+    >
+      {clickable && (
+        <MagnifyingGlassPlus
+          size={13}
+          className="absolute top-3 right-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
+        />
+      )}
       <p className={`text-[9px] font-bold uppercase tracking-widest mb-2 ${labelColors[color]}`}>{label}</p>
       <p className="text-sm font-semibold text-slate-800 truncate" title={value}>{value || "—"}</p>
       {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
@@ -47,7 +64,8 @@ function InsightCard({ label, value, sub, color, loading }: InsightCardProps) {
 }
 
 export function InsightsGrid() {
-  const { rmaData, vendasData, loading } = useDashboard();
+  const { rmaData, vendasData, loading, filters } = useDashboard();
+  const [selection, setSelection] = useState<InsightSelection | null>(null);
 
   const insights = useMemo(() => {
     if (rmaData.length === 0) return null;
@@ -104,6 +122,9 @@ export function InsightsGrid() {
           sub={insights ? `${insights.topVolume[1]} RMAs` : ""}
           color="purple"
           loading={loading}
+          onClick={insights && insights.topVolume[0] !== "—"
+            ? () => setSelection({ type: "produto", key: insights.topVolume[0], color: "purple" })
+            : undefined}
         />
         <InsightCard
           label="Maior Taxa de Falha"
@@ -111,6 +132,9 @@ export function InsightsGrid() {
           sub={insights ? `${insights.topTaxa.taxa.toFixed(2)}%` : ""}
           color="red"
           loading={loading}
+          onClick={insights && insights.topTaxa.m !== "—"
+            ? () => setSelection({ type: "produto", key: insights.topTaxa.m, color: "red" })
+            : undefined}
         />
         <InsightCard
           label="Defeito Mais Comum"
@@ -118,6 +142,9 @@ export function InsightsGrid() {
           sub={insights ? `${insights.topDefeito[1]} ocorrências` : ""}
           color="amber"
           loading={loading}
+          onClick={insights && insights.topDefeito[0] !== "—"
+            ? () => setSelection({ type: "defeito", key: insights.topDefeito[0] })
+            : undefined}
         />
         <InsightCard
           label="Estado com Mais RMAs"
@@ -125,8 +152,21 @@ export function InsightsGrid() {
           sub={insights ? `${insights.topEstado[1]} casos` : ""}
           color="blue"
           loading={loading}
+          onClick={insights && insights.topEstado[0] !== "—"
+            ? () => setSelection({ type: "estado", key: insights.topEstado[0] })
+            : undefined}
         />
       </div>
+
+      {selection && (
+        <InsightDetailModal
+          selection={selection}
+          rmaData={rmaData}
+          vendasData={vendasData}
+          filters={filters}
+          onClose={() => setSelection(null)}
+        />
+      )}
 
       {/* Painel Análise de Confiabilidade */}
       {insights?.confiabilidade && !loading && (
