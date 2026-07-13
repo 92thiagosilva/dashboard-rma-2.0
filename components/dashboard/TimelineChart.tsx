@@ -32,27 +32,13 @@ const CustomTooltip = ({ active, payload, label }: {
 };
 
 export function TimelineChart() {
-  const { rmaData, vendasData, loading, filters, filterOptions } = useDashboard();
+  const { rmaData, vendasData, loading } = useDashboard();
 
   const data = useMemo(() => {
-    // Aplica o mesmo cross-filter de fabricante/modelo do KPIGrid
-    const fabricantesFiltered =
-      filterOptions.fabricantes.length > 0 &&
-      filters.fabricantes.length < filterOptions.fabricantes.length;
-    const modelosFiltered =
-      filterOptions.modelos.length > 0 &&
-      filters.modelos.length < filterOptions.modelos.length;
-
-    let filteredVendas = vendasData;
-    if ((fabricantesFiltered || modelosFiltered) && rmaData.length > 0) {
-      const produtosAtivos = new Set(
-        rmaData.map((r) => r.produto?.toUpperCase().trim()).filter(Boolean)
-      );
-      filteredVendas = vendasData.filter((v) => {
-        const norm = v.descricao_produto?.toUpperCase().trim();
-        return norm ? produtosAtivos.has(norm) : false;
-      });
-    }
+    // vendasData já vem filtrado pelo servidor (get_vendas_filtered) quando
+    // fabricante/modelo estão selecionados — cross-filter client-side removido
+    // para evitar sub-contagem de produtos sem RMA no período filtrado.
+    const filteredVendas = vendasData;
 
     // sacSet por mês para deduplicar igual ao KPI (um SAC = um RMA)
     const timeline: Record<string, { mes: string; vendas: number; sacSet: Set<string> }> = {};
@@ -77,7 +63,7 @@ export function TimelineChart() {
     return Object.values(timeline)
       .sort((a, b) => a.mes.localeCompare(b.mes))
       .map((d) => ({ mes: d.mes, vendas: d.vendas, rma: d.sacSet.size, label: formatMonthLabel(d.mes) }));
-  }, [rmaData, vendasData, filters, filterOptions]);
+  }, [rmaData, vendasData]);
 
   if (loading) {
     return <div className="bg-white rounded-xl border border-slate-100 shadow-card p-5 col-span-2 h-72 skeleton" />;

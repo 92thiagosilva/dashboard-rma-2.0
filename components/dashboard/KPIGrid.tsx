@@ -86,26 +86,10 @@ export function KPIGrid() {
   }, [filters.dateStart, filters.dateEnd, filters.fabricantes.join(","), filters.modelos.join(","), filterOptions.fabricantes.length, filterOptions.modelos.length]);
 
   const kpis = useMemo(() => {
-    // Cross-filter vendas por fabricante/modelo apenas quando o usuário reduziu a seleção
-    // (não quando tudo está selecionado, pois vendas de produtos sem RMA seriam excluídas)
-    const fabricantesFiltered =
-      filterOptions.fabricantes.length > 0 &&
-      filters.fabricantes.length < filterOptions.fabricantes.length;
-    const modelosFiltered =
-      filterOptions.modelos.length > 0 &&
-      filters.modelos.length < filterOptions.modelos.length;
-
-    let filteredVendas = vendasData;
-    if ((fabricantesFiltered || modelosFiltered) && rmaData.length > 0) {
-      // Usa rmaData (já filtrado) para derivar produtos ativos — matching case-insensitive
-      const produtosAtivos = new Set(
-        rmaData.map((r) => r.produto?.toUpperCase().trim()).filter(Boolean)
-      );
-      filteredVendas = vendasData.filter((v) => {
-        const norm = v.descricao_produto?.toUpperCase().trim();
-        return norm ? produtosAtivos.has(norm) : false;
-      });
-    }
+    // vendasData já vem filtrado pelo servidor via get_vendas_filtered() quando fabricante/modelo
+    // estão selecionados (migration 006). O cross-filter client-side foi removido porque usava
+    // rmaData (date-filtered), excluindo produtos sem RMA no período e gerando sub-contagem.
+    const filteredVendas = vendasData;
 
     // Total de pedidos = NFs únicas (uma NF pode ter vários inversores)
     const nfSet = new Set(filteredVendas.map((v) => v.numero_fotus).filter(Boolean));
