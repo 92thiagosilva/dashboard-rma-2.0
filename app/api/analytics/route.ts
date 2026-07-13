@@ -10,10 +10,26 @@ export async function GET(req: NextRequest) {
   const fabricantes = searchParams.get("fabricantes")?.split(",").filter(Boolean) ?? [];
   const modelos = searchParams.get("modelos")?.split(",").filter(Boolean) ?? [];
   const classificacoes = searchParams.get("classificacoes")?.split(",").filter(Boolean) ?? [];
+  const apenasAtivos = searchParams.get("apenasAtivos") === "1";
 
   const supabase = createServerClient();
 
   try {
+    if (type === "active-products") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("get_produtos_ativos", {
+        p_date_end: dateEnd || null,
+      });
+      if (error) {
+        console.error("[analytics/active-products] Erro no RPC:", error);
+        return NextResponse.json({ produtos: [] });
+      }
+      const produtos = ((data ?? []) as Array<{ descricao_produto: string }>)
+        .map((r) => r.descricao_produto)
+        .filter(Boolean);
+      return NextResponse.json({ produtos });
+    }
+
     if (type === "cohort") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc("rma_taxa_por_coorte_venda", {
@@ -21,6 +37,7 @@ export async function GET(req: NextRequest) {
         p_date_end: dateEnd || null,
         p_fabricantes: fabricantes.length > 0 ? fabricantes : null,
         p_modelos: modelos.length > 0 ? modelos : null,
+        p_apenas_ativos: apenasAtivos,
       });
 
       if (error) {

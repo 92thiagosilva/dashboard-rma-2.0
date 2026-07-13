@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { FilterState } from "@/lib/analytics";
 import { calcularClassificacao } from "@/lib/analytics";
 
@@ -121,7 +121,10 @@ const DEFAULT_FILTERS: FilterState = {
   fabricantes: [],
   modelos: [],
   classificacoes: [],
+  apenasAtivos: false,
 };
+
+const normProduto = (s: string | null | undefined) => (s ?? "").toUpperCase().trim();
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // Hidrata imediatamente do cache para evitar tela vazia no reload
@@ -157,6 +160,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [estoqueFilterOptions, setEstoqueFilterOptionsState] = useState<EstoqueFilterOptions>(
     () => cacheGet<EstoqueFilterOptions>("estoqueFilterOptions") ?? { fabricantes: [], tipos: [], empresas: [] }
   );
+
+  // Conjunto de produtos ATIVOS (nomes normalizados UPPER/TRIM) para o filtro
+  // "Apenas produtos ativos". Buscado server-side pois a janela de 6 meses pode
+  // estar fora do período filtrado.
+  const [produtosAtivos, setProdutosAtivos] = useState<Set<string>>(new Set());
+  const [ativosReady, setAtivosReady] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const initializedRef = useRef(false);
@@ -283,6 +292,42 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  // Busca o conjunto de produtos ativos quando o filtro é ligado (ou dateEnd muda)
+  useEffect(() => {
+    if (!filters.apenasAtivos) {
+      setAtivosReady(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams({ type: "active-products" });
+        if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
+        const res = await fetch(`/api/analytics?${params}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setProdutosAtivos(new Set<string>((data.produtos ?? []).map(normProduto)));
+        setAtivosReady(true);
+      } catch {
+        // ignora
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [filters.apenasAtivos, filters.dateEnd]);
+
+  // Deriva rmaData/vendasData filtrados por produtos ativos (ponto único que
+  // alimenta todos os KPIs, gráficos, insights e tabela).
+  const rmaDataView = useMemo(() => {
+    if (!filters.apenasAtivos || !ativosReady) return rmaData;
+    return rmaData.filter((r) => produtosAtivos.has(normProduto(r.produto)));
+  }, [rmaData, filters.apenasAtivos, ativosReady, produtosAtivos]);
+
+  const vendasDataView = useMemo(() => {
+    if (!filters.apenasAtivos || !ativosReady) return vendasData;
+    return vendasData.filter((v) => produtosAtivos.has(normProduto(v.descricao_produto)));
+  }, [vendasData, filters.apenasAtivos, ativosReady, produtosAtivos]);
+
   const setFilters = useCallback((partial: Partial<FilterState>) => {
     setFiltersState((prev) => {
       const next = { ...prev, ...partial };
@@ -328,8 +373,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   return (
     <DashboardContext.Provider
       value={{
-        rmaData,
-        vendasData,
+        rmaData: rmaDataView,
+        vendasData: vendasDataView,
         filterOptions,
         filters,
         crossFilter,

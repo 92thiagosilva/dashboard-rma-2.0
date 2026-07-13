@@ -31,6 +31,9 @@ export interface FilterState {
   fabricantes: string[];
   modelos: string[];
   classificacoes: string[];
+  // Quando true, exclui produtos "inativos" (≤10 vendidos nos 6 meses
+  // anteriores à data final filtrada) de todos os cálculos.
+  apenasAtivos: boolean;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -40,6 +43,7 @@ export const DEFAULT_FILTERS: FilterState = {
   fabricantes: [],
   modelos: [],
   classificacoes: [],
+  apenasAtivos: false,
 };
 
 export interface KPIData {

@@ -418,6 +418,32 @@ export function Sidebar() {
               </div>
             </FilterSection>
 
+            {/* Apenas produtos ativos */}
+            <div className="mb-4 rounded-lg border border-slate-800 bg-slate-800/40 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-200">Apenas produtos ativos</p>
+                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5">
+                    Ignora produtos com ≤ 10 vendas nos 6 meses anteriores à data final
+                  </p>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={filters.apenasAtivos}
+                  onClick={() => setFilters({ apenasAtivos: !filters.apenasAtivos })}
+                  className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
+                    filters.apenasAtivos ? "bg-blue-500" : "bg-slate-600"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                      filters.apenasAtivos ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
             {/* Stock status */}
             <FilterSection title="Status (Ativo)">
               <div className="space-y-1">

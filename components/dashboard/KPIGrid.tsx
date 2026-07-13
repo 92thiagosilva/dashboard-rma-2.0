@@ -69,6 +69,7 @@ export function KPIGrid() {
 
         if (fabricantesFiltered) params.set("fabricantes", filters.fabricantes.join(","));
         if (modelosFiltered) params.set("modelos", filters.modelos.join(","));
+        if (filters.apenasAtivos) params.set("apenasAtivos", "1");
 
         const res = await fetch(`/api/analytics?${params}`);
         if (!res.ok || cancelled) return;
@@ -83,7 +84,7 @@ export function KPIGrid() {
     fetch_();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateStart, filters.dateEnd, filters.fabricantes.join(","), filters.modelos.join(","), filterOptions.fabricantes.length, filterOptions.modelos.length]);
+  }, [filters.dateStart, filters.dateEnd, filters.apenasAtivos, filters.fabricantes.join(","), filters.modelos.join(","), filterOptions.fabricantes.length, filterOptions.modelos.length]);
 
   const kpis = useMemo(() => {
     // vendasData já vem filtrado pelo servidor via get_vendas_filtered() quando fabricante/modelo
