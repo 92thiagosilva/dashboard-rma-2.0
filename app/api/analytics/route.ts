@@ -75,7 +75,10 @@ export async function GET(req: NextRequest) {
 
       if (error) {
         console.error("[analytics/cohort] Erro no RPC:", error);
-        return NextResponse.json({ linkedRMACount: 0, totalInversores: 0, taxa: 0 });
+        return NextResponse.json({
+          linkedRMACount: 0, totalInversores: 0, taxa: 0,
+          _rpcError: error.message ?? String(error),
+        });
       }
 
       const result = data as {
