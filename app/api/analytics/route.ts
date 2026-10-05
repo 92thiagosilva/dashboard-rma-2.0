@@ -78,16 +78,28 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ linkedRMACount: 0, totalInversores: 0, taxa: 0 });
       }
 
-      const result = data as { linked_rma_count: number; total_inversores: number };
+      const result = data as {
+        linked_rma_count: number;
+        total_inversores: number;
+        linked_rma_kw?: number;
+        total_inversores_kw?: number;
+      };
       const taxa =
         result.total_inversores > 0
           ? (result.linked_rma_count / result.total_inversores) * 100
           : 0;
 
+      // Campos kW só existem após a migration 008 — passamos adiante se presentes.
+      const temKw = result.total_inversores_kw != null || result.linked_rma_kw != null;
+      const linkedKw = result.linked_rma_kw ?? 0;
+      const invKw = result.total_inversores_kw ?? 0;
+      const taxaKw = invKw > 0 ? (linkedKw / invKw) * 100 : 0;
+
       return NextResponse.json({
         linkedRMACount: result.linked_rma_count ?? 0,
         totalInversores: result.total_inversores ?? 0,
         taxa,
+        ...(temKw ? { linkedRMAKw: linkedKw, totalInversoresKw: invKw, taxaKw } : {}),
       });
     }
 

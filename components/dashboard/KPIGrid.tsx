@@ -43,6 +43,9 @@ interface CohortData {
   linkedRMACount: number;
   totalInversores: number;
   taxa: number;
+  linkedRMAKw?: number;
+  totalInversoresKw?: number;
+  taxaKw?: number;
 }
 
 export function KPIGrid() {
@@ -146,7 +149,10 @@ export function KPIGrid() {
     return { totalVendas, totalInversores, totalRMACount, vendasValor, rmaValor, taxa, estados, rmaDia, rmaMes };
   }, [rmaData, vendasData, unidade, powerMap]);
 
-  const cohortTaxa = cohort?.taxa ?? 0;
+  // Em kW só usamos os valores kW se a migration 008 já tiver sido aplicada (campos presentes)
+  const cohortTemKw = cohort?.totalInversoresKw != null;
+  const cohortEmKw = emKW && cohortTemKw;
+  const cohortTaxa = (cohortEmKw ? cohort?.taxaKw : cohort?.taxa) ?? 0;
   const cohortAccent =
     cohortTaxa > 5 ? "text-red-500" : cohortTaxa > 2 ? "text-amber-500" : "text-emerald-500";
 
@@ -199,7 +205,7 @@ export function KPIGrid() {
           <div className="min-w-0">
             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">
               Taxa de Falha por Coorte de Venda
-              {emKW && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
+              {emKW && !cohortTemKw && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
             </p>
             <p className="text-xs text-slate-400 leading-relaxed">
               RMAs de qualquer época vinculados às vendas do período via Nro. Fotus —{" "}
@@ -225,15 +231,19 @@ export function KPIGrid() {
                 </div>
                 <div className="text-right">
                   <p className="text-xl font-bold text-slate-800">
-                    {(cohort?.linkedRMACount ?? 0).toLocaleString("pt-BR")}
+                    {cohortEmKw
+                      ? formataValor(cohort?.linkedRMAKw ?? 0, unidade)
+                      : (cohort?.linkedRMACount ?? 0).toLocaleString("pt-BR")}
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">RMAs vinculados</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{cohortEmKw ? "kW vinculado" : "RMAs vinculados"}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xl font-bold text-slate-800">
-                    {(cohort?.totalInversores ?? 0).toLocaleString("pt-BR")}
+                    {cohortEmKw
+                      ? formataValor(cohort?.totalInversoresKw ?? 0, unidade)
+                      : (cohort?.totalInversores ?? 0).toLocaleString("pt-BR")}
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">inversores no período</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{cohortEmKw ? "kW no período" : "inversores no período"}</p>
                 </div>
               </>
             )}
