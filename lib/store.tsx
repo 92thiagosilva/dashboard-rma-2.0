@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { FilterState } from "@/lib/analytics";
 import { calcularClassificacao } from "@/lib/analytics";
+import type { Unidade } from "@/lib/units";
 
 // --- Types ---
 export interface RMARow {
@@ -74,6 +75,9 @@ interface DashboardStore {
   lastImport: string | null;
   estoqueFilters: EstoqueFilters;
   estoqueFilterOptions: EstoqueFilterOptions;
+  unidade: Unidade;
+  powerMap: Record<string, number>;
+  setUnidade: (u: Unidade) => void;
   setFilters: (f: Partial<FilterState>) => void;
   setCrossFilter: (type: string, value: string) => void;
   clearCrossFilter: () => void;
@@ -166,6 +170,10 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // estar fora do período filtrado.
   const [produtosAtivos, setProdutosAtivos] = useState<Set<string>>(new Set());
   const [ativosReady, setAtivosReady] = useState(false);
+
+  // Visualização em inversores (quantidade) ou kW (potência)
+  const [unidade, setUnidadeState] = useState<Unidade>(() => cacheGet<Unidade>("unidade") ?? "inversores");
+  const [powerMap, setPowerMap] = useState<Record<string, number>>(() => cacheGet<Record<string, number>>("powerMap") ?? {});
 
   const abortRef = useRef<AbortController | null>(null);
   const initializedRef = useRef(false);
@@ -316,6 +324,30 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [filters.apenasAtivos, filters.dateEnd]);
 
+  // Busca o mapa de potência (produto -> kW) uma vez na montagem
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/analytics?type=power-map");
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const map = (data.map ?? {}) as Record<string, number>;
+        setPowerMap(map);
+        cacheSet("powerMap", map);
+      } catch {
+        // ignora
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const setUnidade = useCallback((u: Unidade) => {
+    setUnidadeState(u);
+    cacheSet("unidade", u);
+  }, []);
+
   // Deriva rmaData/vendasData filtrados por produtos ativos (ponto único que
   // alimenta todos os KPIs, gráficos, insights e tabela).
   const rmaDataView = useMemo(() => {
@@ -382,6 +414,9 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         lastImport,
         estoqueFilters,
         estoqueFilterOptions,
+        unidade,
+        powerMap,
+        setUnidade,
         setFilters,
         setCrossFilter,
         clearCrossFilter,

@@ -22,7 +22,7 @@ function taxaColor(t: number) {
 }
 
 export function FabricanteBreakdown() {
-  const { rmaData, filters } = useDashboard();
+  const { rmaData, filters, unidade } = useDashboard();
   const [cohortData, setCohortData] = useState<Record<string, CohortByFab>>({});
   const [loading, setLoading] = useState(false);
 
@@ -102,6 +102,7 @@ export function FabricanteBreakdown() {
       <div className="px-4 pt-3 pb-2 border-b border-slate-100">
         <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">
           Taxas por Fabricante Selecionado
+          {unidade === "kw" && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
         </p>
       </div>
 

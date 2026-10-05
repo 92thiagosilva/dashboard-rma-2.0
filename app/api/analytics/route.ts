@@ -15,6 +15,39 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
 
   try {
+    if (type === "power-map") {
+      // Mapa produto(normalizado) -> potência (kW), a partir de rma.potencia.
+      // Usado para visualização em kW. Pega a potência mais frequente por produto.
+      const { data, error } = await supabase
+        .from("rma")
+        .select("produto, potencia")
+        .not("produto", "is", null)
+        .not("potencia", "is", null);
+      if (error) {
+        console.error("[analytics/power-map] Erro:", error);
+        return NextResponse.json({ map: {} });
+      }
+      type Row = { produto: string | null; potencia: number | null };
+      const counts: Record<string, Record<string, number>> = {};
+      for (const r of (data ?? []) as Row[]) {
+        if (!r.produto || r.potencia == null) continue;
+        const key = r.produto.toUpperCase().trim();
+        const pot = String(r.potencia);
+        (counts[key] ??= {})[pot] = (counts[key]?.[pot] ?? 0) + 1;
+      }
+      const map: Record<string, number> = {};
+      for (const key in counts) {
+        // potência mais frequente para o produto
+        let best = ""; let bestN = -1;
+        for (const pot in counts[key]) {
+          if (counts[key][pot] > bestN) { bestN = counts[key][pot]; best = pot; }
+        }
+        const num = parseFloat(best);
+        if (isFinite(num) && num > 0) map[key] = num;
+      }
+      return NextResponse.json({ map });
+    }
+
     if (type === "active-products") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc("get_produtos_ativos", {

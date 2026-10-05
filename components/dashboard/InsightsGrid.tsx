@@ -5,6 +5,7 @@ import { useDashboard } from "@/lib/store";
 import { calcularSolarInsights, calcularConfiabilidadeInsights } from "@/lib/analytics";
 import { ArrowUp, ArrowDown, SolarPanel, Thermometer, Warning, Lightning, Shield, ChartBar, MagnifyingGlassPlus } from "@phosphor-icons/react";
 import { InsightDetailModal, type InsightSelection } from "./InsightDetailModal";
+import { criaResolverPotencia, normalizaKW, formataValor } from "@/lib/units";
 
 interface InsightCardProps {
   label: string;
@@ -64,28 +65,37 @@ function InsightCard({ label, value, sub, color, loading, onClick }: InsightCard
 }
 
 export function InsightsGrid() {
-  const { rmaData, vendasData, loading, filters } = useDashboard();
+  const { rmaData, vendasData, loading, filters, unidade, powerMap } = useDashboard();
+  const emKW = unidade === "kw";
   const [selection, setSelection] = useState<InsightSelection | null>(null);
 
   const insights = useMemo(() => {
     if (rmaData.length === 0) return null;
 
-    const rmaPorModelo: Record<string, number> = {};
-    const vendasPorModelo: Record<string, number> = {};
+    const resolver = criaResolverPotencia(powerMap);
+    const peso = (r: typeof rmaData[number]) =>
+      unidade === "kw" ? (normalizaKW(r.potencia) ?? resolver(r.produto) ?? 0) : 1;
+
+    const rmaPorModelo: Record<string, number> = {};       // ponderado pela unidade (p/ Maior Volume)
+    const rmaCountModelo: Record<string, number> = {};      // contagem (p/ taxa, invariante à unidade)
+    const vendasPorModelo: Record<string, number> = {};     // contagem de inversores
     const rmaPorDefeito: Record<string, number> = {};
     const rmaPorEstado: Record<string, number> = {};
     const vendasPorFabricante: Record<string, number> = {};
 
     rmaData.forEach((r) => {
-      if (r.produto) rmaPorModelo[r.produto] = (rmaPorModelo[r.produto] ?? 0) + 1;
-      if (r.problematica) rmaPorDefeito[r.problematica] = (rmaPorDefeito[r.problematica] ?? 0) + 1;
-      if (r.estado) rmaPorEstado[r.estado] = (rmaPorEstado[r.estado] ?? 0) + 1;
+      const w = peso(r);
+      if (r.produto) {
+        rmaPorModelo[r.produto] = (rmaPorModelo[r.produto] ?? 0) + w;
+        rmaCountModelo[r.produto] = (rmaCountModelo[r.produto] ?? 0) + 1;
+      }
+      if (r.problematica) rmaPorDefeito[r.problematica] = (rmaPorDefeito[r.problematica] ?? 0) + w;
+      if (r.estado) rmaPorEstado[r.estado] = (rmaPorEstado[r.estado] ?? 0) + w;
     });
 
     vendasData.forEach((v) => {
       if (v.descricao_produto)
         vendasPorModelo[v.descricao_produto] = (vendasPorModelo[v.descricao_produto] ?? 0) + (v.quantidade_vendida ?? 0);
-      // Map fabricante via RMA cross
     });
 
     // Map fabricante from RMA to vendas aggregation
@@ -97,7 +107,7 @@ export function InsightsGrid() {
     });
 
     const topVolume = Object.entries(rmaPorModelo).sort((a, b) => b[1] - a[1])[0] ?? ["—", 0];
-    const topTaxa = Object.entries(rmaPorModelo)
+    const topTaxa = Object.entries(rmaCountModelo)
       .map(([m, rma]) => {
         const v = vendasPorModelo[m] ?? 0;
         return { m, taxa: v > 0 ? (rma / v) * 100 : 0 };
@@ -119,7 +129,7 @@ export function InsightsGrid() {
         <InsightCard
           label="Maior Volume"
           value={insights?.topVolume[0] ?? "—"}
-          sub={insights ? `${insights.topVolume[1]} RMAs` : ""}
+          sub={insights ? (emKW ? `${formataValor(insights.topVolume[1] as number, unidade)} em RMA` : `${insights.topVolume[1]} RMAs`) : ""}
           color="purple"
           loading={loading}
           onClick={insights && insights.topVolume[0] !== "—"
@@ -139,7 +149,7 @@ export function InsightsGrid() {
         <InsightCard
           label="Defeito Mais Comum"
           value={insights?.topDefeito[0] ?? "—"}
-          sub={insights ? `${insights.topDefeito[1]} ocorrências` : ""}
+          sub={insights ? (emKW ? `${formataValor(insights.topDefeito[1] as number, unidade)} em RMA` : `${insights.topDefeito[1]} ocorrências`) : ""}
           color="amber"
           loading={loading}
           onClick={insights && insights.topDefeito[0] !== "—"
@@ -149,7 +159,7 @@ export function InsightsGrid() {
         <InsightCard
           label="Estado com Mais RMAs"
           value={insights?.topEstado[0] ?? "—"}
-          sub={insights ? `${insights.topEstado[1]} casos` : ""}
+          sub={insights ? (emKW ? `${formataValor(insights.topEstado[1] as number, unidade)} em RMA` : `${insights.topEstado[1]} casos`) : ""}
           color="blue"
           loading={loading}
           onClick={insights && insights.topEstado[0] !== "—"

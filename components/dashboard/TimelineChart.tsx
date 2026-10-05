@@ -6,6 +6,7 @@ import {
   Legend, ResponsiveContainer,
 } from "recharts";
 import { useDashboard } from "@/lib/store";
+import { criaResolverPotencia, normalizaKW, valorNaUnidade } from "@/lib/units";
 
 function formatMonthLabel(yearMonth: string): string {
   const [y, m] = yearMonth.split("-");
@@ -32,38 +33,46 @@ const CustomTooltip = ({ active, payload, label }: {
 };
 
 export function TimelineChart() {
-  const { rmaData, vendasData, loading } = useDashboard();
+  const { rmaData, vendasData, loading, unidade, powerMap } = useDashboard();
 
   const data = useMemo(() => {
-    // vendasData já vem filtrado pelo servidor (get_vendas_filtered) quando
-    // fabricante/modelo estão selecionados — cross-filter client-side removido
-    // para evitar sub-contagem de produtos sem RMA no período filtrado.
     const filteredVendas = vendasData;
+    const resolver = criaResolverPotencia(powerMap);
+    const rmaKW = (r: typeof rmaData[number]) => normalizaKW(r.potencia) ?? resolver(r.produto) ?? 0;
 
-    // sacSet por mês para deduplicar igual ao KPI (um SAC = um RMA)
-    const timeline: Record<string, { mes: string; vendas: number; sacSet: Set<string> }> = {};
+    // Por mês: valor de vendas na unidade e RMAs dedup por SAC (1 linha por SAC)
+    const timeline: Record<string, { mes: string; vendas: number; sacRows: Map<string, typeof rmaData[number]> }> = {};
 
     let minRmaMes: string | null = null;
     rmaData.forEach((r) => {
       if (!r.data_criacao) return;
       const mes = r.data_criacao.slice(0, 7);
       if (!minRmaMes || mes < minRmaMes) minRmaMes = mes;
-      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, sacSet: new Set() };
-      timeline[mes].sacSet.add(r.sac ?? `__id_${r.id}`);
+      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, sacRows: new Map() };
+      const k = r.sac ?? `__id_${r.id}`;
+      if (!timeline[mes].sacRows.has(k)) timeline[mes].sacRows.set(k, r);
     });
 
     filteredVendas.forEach((v) => {
       if (!v.data_venda) return;
       const mes = v.data_venda.slice(0, 7);
       if (minRmaMes && mes < minRmaMes) return;
-      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, sacSet: new Set() };
-      timeline[mes].vendas += v.quantidade_vendida ?? 0;
+      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, sacRows: new Map() };
+      timeline[mes].vendas += valorNaUnidade(v.quantidade_vendida ?? 0, v.descricao_produto, unidade, resolver);
     });
 
     return Object.values(timeline)
       .sort((a, b) => a.mes.localeCompare(b.mes))
-      .map((d) => ({ mes: d.mes, vendas: d.vendas, rma: d.sacSet.size, label: formatMonthLabel(d.mes) }));
-  }, [rmaData, vendasData]);
+      .map((d) => {
+        let rma = 0;
+        if (unidade === "kw") {
+          for (const r of d.sacRows.values()) rma += rmaKW(r);
+        } else {
+          rma = d.sacRows.size;
+        }
+        return { mes: d.mes, vendas: Math.round(d.vendas), rma: Math.round(rma), label: formatMonthLabel(d.mes) };
+      });
+  }, [rmaData, vendasData, unidade, powerMap]);
 
   if (loading) {
     return <div className="bg-white rounded-xl border border-slate-100 shadow-card p-5 col-span-2 h-72 skeleton" />;
@@ -114,7 +123,7 @@ export function TimelineChart() {
             yAxisId="vendas"
             type="monotone"
             dataKey="vendas"
-            name="Volume de Vendas"
+            name={unidade === "kw" ? "Vendas (kW)" : "Volume de Vendas"}
             stroke="#3b82f6"
             strokeWidth={2}
             dot={false}
@@ -124,7 +133,7 @@ export function TimelineChart() {
             yAxisId="rma"
             type="monotone"
             dataKey="rma"
-            name="RMAs Abertos"
+            name={unidade === "kw" ? "RMA (kW)" : "RMAs Abertos"}
             stroke="#ef4444"
             strokeWidth={2}
             dot={false}

@@ -51,7 +51,7 @@ export function Sidebar() {
   const {
     filters, setFilters, filterOptions, lastImport,
     estoqueFilters, setEstoqueFilters, estoqueFilterOptions,
-    refreshData,
+    refreshData, unidade, setUnidade,
   } = useDashboard();
   const { show: showToast } = useToast();
   const [showImport, setShowImport] = useState(false);
@@ -398,6 +398,24 @@ export function Sidebar() {
             <div className="flex items-center gap-1.5 mb-4">
               <SlidersHorizontal size={12} className="text-slate-500" />
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filtros</span>
+            </div>
+
+            {/* Visualização: Inversores x kW */}
+            <div className="mb-4">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Visualizar em</p>
+              <div className="flex gap-1 p-0.5 bg-slate-800 rounded-lg">
+                {([["inversores", "Inversores"], ["kw", "kW"]] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setUnidade(val)}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                      unidade === val ? "bg-blue-500 text-white" : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Date range */}

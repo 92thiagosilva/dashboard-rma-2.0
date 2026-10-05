@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { useDashboard } from "@/lib/store";
+import { criaResolverPotencia, normalizaKW, valorNaUnidade, formataValor } from "@/lib/units";
 
 interface KPICardProps {
   label: string;
@@ -45,7 +46,8 @@ interface CohortData {
 }
 
 export function KPIGrid() {
-  const { rmaData, vendasData, loading, filters, filterOptions } = useDashboard();
+  const { rmaData, vendasData, loading, filters, filterOptions, unidade, powerMap } = useDashboard();
+  const emKW = unidade === "kw";
 
   const [cohort, setCohort] = useState<CohortData | null>(null);
   const [cohortLoading, setCohortLoading] = useState(true);
@@ -87,30 +89,47 @@ export function KPIGrid() {
   }, [filters.dateStart, filters.dateEnd, filters.apenasAtivos, filters.fabricantes.join(","), filters.modelos.join(","), filterOptions.fabricantes.length, filterOptions.modelos.length]);
 
   const kpis = useMemo(() => {
-    // vendasData já vem filtrado pelo servidor via get_vendas_filtered() quando fabricante/modelo
-    // estão selecionados (migration 006). O cross-filter client-side foi removido porque usava
-    // rmaData (date-filtered), excluindo produtos sem RMA no período e gerando sub-contagem.
     const filteredVendas = vendasData;
+    const resolver = criaResolverPotencia(powerMap);
+    // kW de um RMA: usa rma.potencia; senão resolve pelo produto (mapa/nome)
+    const rmaKW = (r: typeof rmaData[number]) =>
+      normalizaKW(r.potencia) ?? resolver(r.produto) ?? 0;
 
-    // Total de pedidos = NFs únicas (uma NF pode ter vários inversores)
+    // Total de pedidos = NFs únicas (sempre contagem — não se aplica a kW)
     const nfSet = new Set(filteredVendas.map((v) => v.numero_fotus).filter(Boolean));
     const totalVendas = nfSet.size;
 
-    // Total de inversores = soma das quantidades vendidas
-    const totalInversores = filteredVendas.reduce((s, v) => s + (v.quantidade_vendida ?? 0), 0);
+    // Vendas: contagem de inversores e valor na unidade escolhida
+    let totalInversores = 0;
+    let vendasValor = 0;
+    for (const v of filteredVendas) {
+      const q = v.quantidade_vendida ?? 0;
+      totalInversores += q;
+      vendasValor += valorNaUnidade(q, v.descricao_produto, unidade, resolver);
+    }
 
-    // Total RMAs = SACs únicos (um SAC pode ter múltiplas linhas)
-    const sacSet = new Set(rmaData.map((r) => r.sac).filter(Boolean));
-    const totalRMA = sacSet.size > 0 ? sacSet.size : rmaData.length;
+    // RMAs únicos por SAC (um SAC pode ter várias linhas) — guarda 1 linha por SAC
+    const sacMap = new Map<string, typeof rmaData[number]>();
+    for (const r of rmaData) {
+      const k = r.sac ?? `__id_${r.id}`;
+      if (!sacMap.has(k)) sacMap.set(k, r);
+    }
+    const totalRMACount = sacMap.size;
+    let rmaValor = 0;
+    if (unidade === "kw") {
+      for (const r of sacMap.values()) rmaValor += rmaKW(r);
+    } else {
+      rmaValor = totalRMACount;
+    }
 
-    // Taxa de falha usa inversores como denominador (unidades no campo)
-    const taxa = totalInversores > 0 ? (totalRMA / totalInversores) * 100 : 0;
+    // Taxa de falha: numerador e denominador na mesma unidade
+    const taxa = vendasValor > 0 ? (rmaValor / vendasValor) * 100 : 0;
 
     const estados = new Set(rmaData.map((r) => r.estado).filter(Boolean)).size;
 
     let rmaDia = 0;
     let rmaMes = 0;
-    if (totalRMA > 0) {
+    if (rmaValor > 0) {
       const dates = rmaData
         .map((r) => r.data_criacao)
         .filter(Boolean)
@@ -119,13 +138,13 @@ export function KPIGrid() {
         const minDate = dates.reduce((a, b) => Math.min(a, b));
         const maxDate = dates.reduce((a, b) => Math.max(a, b));
         const diffDays = Math.max(1, Math.ceil((maxDate - minDate) / 86400000) + 1);
-        rmaDia = totalRMA / diffDays;
+        rmaDia = rmaValor / diffDays;
         rmaMes = rmaDia * 30.44;
       }
     }
 
-    return { totalVendas, totalInversores, totalRMA, taxa, estados, rmaDia, rmaMes };
-  }, [rmaData, vendasData]);
+    return { totalVendas, totalInversores, totalRMACount, vendasValor, rmaValor, taxa, estados, rmaDia, rmaMes };
+  }, [rmaData, vendasData, unidade, powerMap]);
 
   const cohortTaxa = cohort?.taxa ?? 0;
   const cohortAccent =
@@ -136,20 +155,25 @@ export function KPIGrid() {
       <KPICard
         label="Pedidos (NFs únicas)"
         value={kpis.totalVendas.toLocaleString("pt-BR")}
-        sub={`${kpis.totalInversores.toLocaleString("pt-BR")} inversores vendidos`}
+        sub={emKW
+          ? `${formataValor(kpis.vendasValor, unidade)} vendidos`
+          : `${kpis.totalInversores.toLocaleString("pt-BR")} inversores vendidos`}
         accent="blue"
         loading={loading}
       />
       <KPICard
-        label="Total RMAs (filtrado)"
-        value={kpis.totalRMA.toLocaleString("pt-BR")}
+        label={emKW ? "Total RMAs (kW)" : "Total RMAs (filtrado)"}
+        value={emKW ? formataValor(kpis.rmaValor, unidade) : kpis.totalRMACount.toLocaleString("pt-BR")}
+        sub={emKW ? `${kpis.totalRMACount.toLocaleString("pt-BR")} RMAs` : undefined}
         accent="red"
         loading={loading}
       />
       <KPICard
         label="Taxa de Falha (período)"
         value={`${kpis.taxa.toFixed(2)}%`}
-        sub={`${kpis.totalRMA} RMAs / ${kpis.totalInversores.toLocaleString("pt-BR")} inversores`}
+        sub={emKW
+          ? `${formataValor(kpis.rmaValor, unidade)} / ${formataValor(kpis.vendasValor, unidade)}`
+          : `${kpis.totalRMACount} RMAs / ${kpis.totalInversores.toLocaleString("pt-BR")} inversores`}
         accent={kpis.taxa > 5 ? "red" : kpis.taxa > 2 ? "amber" : "green"}
         loading={loading}
       />
@@ -159,13 +183,13 @@ export function KPIGrid() {
         loading={loading}
       />
       <KPICard
-        label="RMA / Dia (média)"
-        value={kpis.rmaDia.toFixed(1)}
+        label={emKW ? "kW em RMA / Dia" : "RMA / Dia (média)"}
+        value={emKW ? formataValor(kpis.rmaDia, unidade) : kpis.rmaDia.toFixed(1)}
         loading={loading}
       />
       <KPICard
-        label="RMA / Mês (estimado)"
-        value={Math.round(kpis.rmaMes).toLocaleString("pt-BR")}
+        label={emKW ? "kW em RMA / Mês" : "RMA / Mês (estimado)"}
+        value={emKW ? formataValor(kpis.rmaMes, unidade) : Math.round(kpis.rmaMes).toLocaleString("pt-BR")}
         loading={loading}
       />
 
@@ -175,6 +199,7 @@ export function KPIGrid() {
           <div className="min-w-0">
             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">
               Taxa de Falha por Coorte de Venda
+              {emKW && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
             </p>
             <p className="text-xs text-slate-400 leading-relaxed">
               RMAs de qualquer época vinculados às vendas do período via Nro. Fotus —{" "}
