@@ -11,8 +11,7 @@ function createAdminClient() {
 
 const ALLOWED_TABLES: Record<string, string[]> = {
   analytics: ["vendas", "rma"],
-  estoque: ["estoque_danificado"],
-  all: ["vendas", "rma", "estoque_danificado"],
+  all: ["vendas", "rma"],
 };
 
 export async function POST(req: NextRequest) {

@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import {
-  ChartBar, Package, UploadSimple, SlidersHorizontal, CaretDown, CaretUp,
+  ChartBar, UploadSimple, SlidersHorizontal, CaretDown, CaretUp,
   Trash, Warning, SpinnerGap,
 } from "@phosphor-icons/react";
 import { useDashboard } from "@/lib/store";
@@ -46,11 +45,8 @@ function FilterSection({
 }
 
 export function Sidebar() {
-  const pathname = usePathname();
-  const router = useRouter();
   const {
     filters, setFilters, filterOptions, lastImport,
-    estoqueFilters, setEstoqueFilters, estoqueFilterOptions,
     refreshData, unidade, setUnidade,
   } = useDashboard();
   const { show: showToast } = useToast();
@@ -59,11 +55,8 @@ export function Sidebar() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
-  const isAnalytics = pathname === "/";
-  const isEstoque = pathname === "/estoque";
-
-  const scope = isEstoque ? "estoque" : "analytics";
-  const scopeLabel = isEstoque ? "Estoque" : "Analytics (RMA + Vendas)";
+  const scope = "analytics";
+  const scopeLabel = "Analytics (RMA + Vendas)";
 
   const handleClear = async () => {
     setClearing(true);
@@ -125,32 +118,6 @@ export function Sidebar() {
             <h1 className="text-white font-bold text-sm tracking-tight">RMA Analytics PV</h1>
           </div>
           <p className="text-slate-500 text-[10px] pl-8">Fotus Energia Solar</p>
-
-          {/* Tabs */}
-          <div className="flex mt-3 gap-1.5">
-            <button
-              onClick={() => router.push("/")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                isAnalytics
-                  ? "bg-blue-500 text-white"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-              }`}
-            >
-              <ChartBar size={12} weight={isAnalytics ? "fill" : "regular"} />
-              Analytics
-            </button>
-            <button
-              onClick={() => router.push("/estoque")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-medium transition-all ${
-                isEstoque
-                  ? "bg-blue-500 text-white"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-              }`}
-            >
-              <Package size={12} weight={isEstoque ? "fill" : "regular"} />
-              Estoque
-            </button>
-          </div>
         </div>
 
         {/* Import + Clear buttons */}
@@ -213,188 +180,7 @@ export function Sidebar() {
         </div>
 
         {/* Filters */}
-        {isEstoque && (
-          <div className="flex-1 overflow-y-auto px-4 py-4">
-            <div className="flex items-center gap-1.5 mb-4">
-              <SlidersHorizontal size={12} className="text-slate-500" />
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filtros</span>
-            </div>
-
-            {/* Status */}
-            <FilterSection title="Status">
-              <div className="space-y-0.5">
-                {[
-                  { value: "1-RECEBIDO NO CD", label: "Recebido no CD", dot: "bg-blue-500" },
-                  { value: "2-SEPARADO PARA ENVIO", label: "Separado p/ Envio", dot: "bg-amber-500" },
-                  { value: "3-ENVIADO", label: "Enviado", dot: "bg-emerald-500" },
-                ].map(({ value, label, dot }) => (
-                  <label key={value} className="flex items-center gap-2 py-1 cursor-pointer group"
-                    onClick={() => setEstoqueFilters({
-                      status: estoqueFilters.status.includes(value)
-                        ? estoqueFilters.status.filter((s) => s !== value)
-                        : [...estoqueFilters.status, value],
-                    })}
-                  >
-                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
-                      estoqueFilters.status.includes(value) ? "bg-blue-500 border-blue-500" : "border-slate-500 group-hover:border-blue-400"
-                    }`}>
-                      {estoqueFilters.status.includes(value) && <div className="w-2 h-1 border-b-2 border-l-2 border-white rotate-[-45deg] mt-0.5" />}
-                    </div>
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
-                    <span className="text-xs text-slate-300 group-hover:text-white transition-colors">{label}</span>
-                  </label>
-                ))}
-              </div>
-              {estoqueFilters.status.length > 0 && (
-                <button
-                  onClick={() => setEstoqueFilters({ status: [] })}
-                  className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors mt-2"
-                >
-                  Limpar
-                </button>
-              )}
-            </FilterSection>
-
-            {/* Previsão de Envio / Data de Envio */}
-            <FilterSection title="Previsão / Data de Envio">
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider block">De</label>
-                <input
-                  type="date"
-                  value={estoqueFilters.previsaoStart}
-                  onChange={(e) => setEstoqueFilters({ previsaoStart: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors"
-                />
-                <label className="text-[10px] text-slate-500 uppercase tracking-wider block mt-1">Até</label>
-                <input
-                  type="date"
-                  value={estoqueFilters.previsaoEnd}
-                  onChange={(e) => setEstoqueFilters({ previsaoEnd: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition-colors"
-                />
-                {(estoqueFilters.previsaoStart || estoqueFilters.previsaoEnd) && (
-                  <button
-                    onClick={() => setEstoqueFilters({ previsaoStart: "", previsaoEnd: "" })}
-                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors mt-1"
-                  >
-                    Limpar datas
-                  </button>
-                )}
-              </div>
-            </FilterSection>
-
-            {/* Fabricante estoque */}
-            {estoqueFilterOptions.fabricantes.length > 0 && (
-              <FilterSection title="Fabricante">
-                <div className="flex gap-1.5 mb-2">
-                  <button
-                    onClick={() => setEstoqueFilters({ fabricantes: [...estoqueFilterOptions.fabricantes] })}
-                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setEstoqueFilters({ fabricantes: [] })}
-                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
-                  >
-                    Limpar
-                  </button>
-                </div>
-                <div className="max-h-36 overflow-y-auto space-y-0.5">
-                  {estoqueFilterOptions.fabricantes.map((f) => (
-                    <CheckboxItem
-                      key={f}
-                      label={f}
-                      checked={estoqueFilters.fabricantes.includes(f)}
-                      onChange={(checked) =>
-                        setEstoqueFilters({
-                          fabricantes: checked
-                            ? [...estoqueFilters.fabricantes, f]
-                            : estoqueFilters.fabricantes.filter((x) => x !== f),
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              </FilterSection>
-            )}
-
-            {/* Tipo estoque */}
-            {estoqueFilterOptions.tipos.length > 0 && (
-              <FilterSection title="Tipo">
-                <div className="flex gap-1.5 mb-2">
-                  <button
-                    onClick={() => setEstoqueFilters({ tipos: [...estoqueFilterOptions.tipos] })}
-                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setEstoqueFilters({ tipos: [] })}
-                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
-                  >
-                    Limpar
-                  </button>
-                </div>
-                <div className="max-h-32 overflow-y-auto space-y-0.5">
-                  {estoqueFilterOptions.tipos.map((t) => (
-                    <CheckboxItem
-                      key={t}
-                      label={t}
-                      checked={estoqueFilters.tipos.includes(t)}
-                      onChange={(checked) =>
-                        setEstoqueFilters({
-                          tipos: checked
-                            ? [...estoqueFilters.tipos, t]
-                            : estoqueFilters.tipos.filter((x) => x !== t),
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              </FilterSection>
-            )}
-
-            {/* CD / Empresa */}
-            {estoqueFilterOptions.empresas.length > 0 && (
-              <FilterSection title="CD / Empresa" defaultOpen={false}>
-                <div className="flex gap-1.5 mb-2">
-                  <button
-                    onClick={() => setEstoqueFilters({ empresas: [...estoqueFilterOptions.empresas] })}
-                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
-                  >
-                    Todos
-                  </button>
-                  <button
-                    onClick={() => setEstoqueFilters({ empresas: [] })}
-                    className="text-[10px] px-2 py-0.5 bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
-                  >
-                    Limpar
-                  </button>
-                </div>
-                <div className="max-h-32 overflow-y-auto space-y-0.5">
-                  {estoqueFilterOptions.empresas.map((e) => (
-                    <CheckboxItem
-                      key={e}
-                      label={e}
-                      checked={estoqueFilters.empresas.includes(e)}
-                      onChange={(checked) =>
-                        setEstoqueFilters({
-                          empresas: checked
-                            ? [...estoqueFilters.empresas, e]
-                            : estoqueFilters.empresas.filter((x) => x !== e),
-                        })
-                      }
-                    />
-                  ))}
-                </div>
-              </FilterSection>
-            )}
-          </div>
-        )}
-
-        {isAnalytics && (
-          <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
             <div className="flex items-center gap-1.5 mb-4">
               <SlidersHorizontal size={12} className="text-slate-500" />
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filtros</span>
@@ -595,7 +381,6 @@ export function Sidebar() {
               </FilterSection>
             )}
           </div>
-        )}
       </aside>
 
       {showImport && <ImportModal onClose={() => setShowImport(false)} />}

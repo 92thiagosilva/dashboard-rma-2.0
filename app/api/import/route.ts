@@ -65,7 +65,6 @@ export async function POST(req: NextRequest) {
       const tableMap: Record<string, string> = {
         vendas: "vendas",
         rma: "rma",
-        estoque: "estoque_danificado",
         mttf: "mttf_referencia",
       };
       const tableName = tableMap[type];
@@ -87,8 +86,6 @@ export async function POST(req: NextRequest) {
       rowsImported = await upsertChunks(supabase, "vendas", rows);
     } else if (type === "rma") {
       rowsImported = await upsertChunks(supabase, "rma", rows);
-    } else if (type === "estoque") {
-      rowsImported = await upsertChunks(supabase, "estoque_danificado", rows);
     } else if (type === "mttf") {
       for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
         const chunk = rows.slice(i, i + CHUNK_SIZE);

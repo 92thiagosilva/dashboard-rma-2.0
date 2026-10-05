@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import { X, UploadSimple, FileXls, CheckCircle, SpinnerGap, Warning } from "@phosphor-icons/react";
-import { readExcelFile, parseVendas, parseRMA, parseEstoque, parseMTTF } from "@/lib/excel-parser";
+import { readExcelFile, parseVendas, parseRMA, parseMTTF } from "@/lib/excel-parser";
 import { useToast } from "@/components/ui/Toast";
 import { useDashboard } from "@/lib/store";
 
@@ -11,7 +11,6 @@ const BATCH_SIZE = 3000; // linhas por request — evita 413 em arquivos grandes
 const TYPE_LABELS: Record<string, string> = {
   vendas: "Relatório de Vendas",
   rma: "Relatório RMA",
-  estoque: "Estoque Danificado",
   mttf: "Relatório MTTF",
   unknown: "Tipo não reconhecido",
 };
@@ -19,7 +18,6 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   vendas: "text-blue-400",
   rma: "text-red-400",
-  estoque: "text-amber-400",
   mttf: "text-emerald-400",
   unknown: "text-slate-400",
 };
@@ -86,7 +84,6 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
 
         if (type === "vendas") parsedRows = parseVendas(rows) as never;
         else if (type === "rma") parsedRows = parseRMA(rows) as never;
-        else if (type === "estoque") parsedRows = parseEstoque(rows) as never;
         else if (type === "mttf") parsedRows = parseMTTF(rows) as never;
 
         // Envia em batches para evitar 413 Request Entity Too Large
@@ -199,7 +196,7 @@ export function ImportModal({ onClose }: { onClose: () => void }) {
             <p className="text-sm font-medium text-slate-700">
               Arraste os arquivos ou <span className="text-blue-500">clique para selecionar</span>
             </p>
-            <p className="text-xs text-slate-400 mt-1">.xlsx ou .xls — Vendas, RMA, Estoque, MTTF</p>
+            <p className="text-xs text-slate-400 mt-1">.xlsx ou .xls — Vendas, RMA, MTTF</p>
             <input
               ref={inputRef}
               type="file"

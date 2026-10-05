@@ -88,10 +88,9 @@ git push -u origin main
 
 1. Acesse o dashboard (local ou Vercel)
 2. Clique em **Importar Planilhas**
-3. Selecione os 4 arquivos (pode selecionar todos de uma vez):
+3. Selecione os arquivos (pode selecionar todos de uma vez):
    - `Relatorio_Vendas_Total.xlsx`
    - `Relatorio_RMA_Total.xlsx`
-   - `Estoque danificados.xlsx`
    - `Relatorio_MTTF.xlsx`
 4. O sistema detecta automaticamente o tipo de cada arquivo
 5. Clique **Importar** e aguarde
@@ -104,7 +103,6 @@ git push -u origin main
 |---|---|
 | Vendas | Data da Venda, Cód. do Produto, Descrição do Produto, Quantidade Vendida |
 | RMA | Cód. do Produto, Data de Criação, Produto, Fabricante, Problemática, Estado |
-| Estoque | SN, PRODUTO, FABRICANTE, STATUS, TIPO |
 | MTTF | Produto, Média de MTTF |
 
 ---

@@ -41,30 +41,6 @@ export interface FilterOptions {
   classificacoes: string[];
 }
 
-export interface EstoqueFilters {
-  fabricantes: string[];
-  tipos: string[];
-  empresas: string[];
-  status: string[];
-  previsaoStart: string;
-  previsaoEnd: string;
-}
-
-export interface EstoqueFilterOptions {
-  fabricantes: string[];
-  tipos: string[];
-  empresas: string[];
-}
-
-export const DEFAULT_ESTOQUE_FILTERS: EstoqueFilters = {
-  fabricantes: [],
-  tipos: [],
-  empresas: [],
-  status: [],
-  previsaoStart: "",
-  previsaoEnd: "",
-};
-
 interface DashboardStore {
   rmaData: RMARow[];
   vendasData: VendasRow[];
@@ -73,8 +49,6 @@ interface DashboardStore {
   crossFilter: { type: string | null; value: string | null };
   loading: boolean;
   lastImport: string | null;
-  estoqueFilters: EstoqueFilters;
-  estoqueFilterOptions: EstoqueFilterOptions;
   unidade: Unidade;
   powerMap: Record<string, number>;
   setUnidade: (u: Unidade) => void;
@@ -83,8 +57,6 @@ interface DashboardStore {
   clearCrossFilter: () => void;
   refreshData: () => void;
   setLastImport: (d: string) => void;
-  setEstoqueFilters: (f: Partial<EstoqueFilters>) => void;
-  setEstoqueFilterOptions: (opts: EstoqueFilterOptions) => void;
 }
 
 // --- Cache utilities (sessionStorage — persiste no F5, limpa ao fechar a aba) ---
@@ -157,12 +129,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   });
   const [lastImport, setLastImportState] = useState<string | null>(
     () => cacheGet<string>("lastImport")
-  );
-  const [estoqueFilters, setEstoqueFiltersState] = useState<EstoqueFilters>(
-    () => cacheGet<EstoqueFilters>("estoqueFilters") ?? DEFAULT_ESTOQUE_FILTERS
-  );
-  const [estoqueFilterOptions, setEstoqueFilterOptionsState] = useState<EstoqueFilterOptions>(
-    () => cacheGet<EstoqueFilterOptions>("estoqueFilterOptions") ?? { fabricantes: [], tipos: [], empresas: [] }
   );
 
   // Conjunto de produtos ATIVOS (nomes normalizados UPPER/TRIM) para o filtro
@@ -381,19 +347,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     cacheSet("lastImport", d);
   }, []);
 
-  const setEstoqueFilters = useCallback((partial: Partial<EstoqueFilters>) => {
-    setEstoqueFiltersState((prev) => {
-      const next = { ...prev, ...partial };
-      cacheSet("estoqueFilters", next);
-      return next;
-    });
-  }, []);
-
-  const setEstoqueFilterOptions = useCallback((opts: EstoqueFilterOptions) => {
-    setEstoqueFilterOptionsState(opts);
-    cacheSet("estoqueFilterOptions", opts);
-  }, []);
-
   // Após importação: limpa cache e rebusca tudo
   const refreshData = useCallback(() => {
     cacheClear();
@@ -412,8 +365,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         crossFilter,
         loading,
         lastImport,
-        estoqueFilters,
-        estoqueFilterOptions,
         unidade,
         powerMap,
         setUnidade,
@@ -422,8 +373,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         clearCrossFilter,
         refreshData,
         setLastImport,
-        setEstoqueFilters,
-        setEstoqueFilterOptions,
       }}
     >
       {children}

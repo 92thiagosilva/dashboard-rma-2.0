@@ -38,28 +38,6 @@ export type Database = {
         Insert: Omit<Database["public"]["Tables"]["rma"]["Row"], "id" | "mttf_dias" | "imported_at">;
         Update: Partial<Database["public"]["Tables"]["rma"]["Insert"]>;
       };
-      estoque_danificado: {
-        Row: {
-          id: string;
-          sn: string | null;
-          cod_produto: string | null;
-          produto: string | null;
-          fabricante: string | null;
-          sac: string | null;
-          cd: string | null;
-          empresa: string | null;
-          tipo: string | null;
-          status: string | null;
-          previsao_envio: string | null;
-          nf_retorno: string | null;
-          nf_envio_fabricante: string | null;
-          data_envio: string | null;
-          custo_produto: number | null;
-          imported_at: string;
-        };
-        Insert: Omit<Database["public"]["Tables"]["estoque_danificado"]["Row"], "id" | "imported_at">;
-        Update: Partial<Database["public"]["Tables"]["estoque_danificado"]["Insert"]>;
-      };
       mttf_referencia: {
         Row: { produto: string; media_mttf: number | null; ativo: string | null };
         Insert: Database["public"]["Tables"]["mttf_referencia"]["Row"];

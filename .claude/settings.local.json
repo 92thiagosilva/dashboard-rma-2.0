@@ -1,7 +1,32 @@
 {
   "permissions": {
     "allow": [
-      "mcp__Windows-MCP__PowerShell"
+      "mcp__Windows-MCP__PowerShell",
+      "mcp__c9b06a3d-04b0-41cb-86ed-ccdfa000617d__list_tables",
+      "mcp__c9b06a3d-04b0-41cb-86ed-ccdfa000617d__execute_sql",
+      "mcp__Claude_Preview__preview_start",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__read_page",
+      "mcp__Claude_in_Chrome__get_page_text",
+      "mcp__Windows-MCP__Screenshot",
+      "mcp__Windows-MCP__Click",
+      "mcp__Windows-MCP__Snapshot",
+      "mcp__49078bad-5bb7-4f5e-91fa-0068e3bfd020__list_teams",
+      "mcp__49078bad-5bb7-4f5e-91fa-0068e3bfd020__list_projects",
+      "mcp__49078bad-5bb7-4f5e-91fa-0068e3bfd020__deploy_to_vercel",
+      "mcp__49078bad-5bb7-4f5e-91fa-0068e3bfd020__list_deployments",
+      "mcp__49078bad-5bb7-4f5e-91fa-0068e3bfd020__get_deployment_build_logs",
+      "mcp__Desktop_Commander__start_process",
+      "mcp__Desktop_Commander__read_file",
+      "mcp__PDF_Tools_-_View__Fill__Merge__Split__Manage_Pages__Extract__get_pdf_info",
+      "Bash(npx tsc *)",
+      "mcp__c9b06a3d-04b0-41cb-86ed-ccdfa000617d__list_projects",
+      "mcp__c9b06a3d-04b0-41cb-86ed-ccdfa000617d__apply_migration",
+      "PowerShell(pip install openpyxl -q)",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"C:\\\\Users\\\\thiago.silva\\\\OneDrive - FOTUS ENERGIA SOLAR LTDA\\\\Documentos\\\\Claude\\\\Projects\\\\Dashboard RMA\\\\app\\\\api\\\\clear\")",
+      "PowerShell($env:PORT = \"3001\"; Start-Process -NoNewWindow -FilePath \"npm\" -ArgumentList \"run\", \"dev\", \"--\", \"-p\", \"3001\" -WorkingDirectory \"C:\\\\Users\\\\thiago.silva\\\\OneDrive - FOTUS ENERGIA SOLAR LTDA\\\\Documentos\\\\Claude\\\\Projects\\\\Dashboard RMA\")"
     ]
   }
 }

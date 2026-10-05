@@ -5,10 +5,9 @@ import type { Database } from "@/lib/supabase/types";
 
 type VendasInsert = Database["public"]["Tables"]["vendas"]["Insert"];
 type RMAInsert = Database["public"]["Tables"]["rma"]["Insert"];
-type EstoqueInsert = Database["public"]["Tables"]["estoque_danificado"]["Insert"];
 type MTTFInsert = Database["public"]["Tables"]["mttf_referencia"]["Insert"];
 
-export type DetectedFileType = "vendas" | "rma" | "estoque" | "mttf" | "unknown";
+export type DetectedFileType = "vendas" | "rma" | "mttf" | "unknown";
 
 function parseExcelDate(val: unknown): string | null {
   if (!val) return null;
@@ -45,8 +44,6 @@ export function detectFileType(headers: string[]): DetectedFileType {
     return "rma";
   if (normalized.includes("QUANTIDADE VENDIDA") || (normalized.includes("NUMERO FOTUS") && normalized.includes("DESCRIÇÃO DO PRODUTO")))
     return "vendas";
-  if (normalized.includes("SAC") && normalized.includes("CD") && normalized.includes("STATUS"))
-    return "estoque";
   if (normalized.includes("MÉDIA DE MTTF") || normalized.includes("MEDIA DE MTTF"))
     return "mttf";
   return "unknown";
@@ -84,28 +81,6 @@ export function parseRMA(rows: Record<string, unknown>[]): RMAInsert[] {
       potencia: Number(n["POTÊNCIA"] ?? n["POTENCIA"]) || null,
       fabricante: String(n["FABRICANTE"] ?? "").trim() || null,
       ativo: String(n["ATIVO"] ?? "Não").trim() || "Não",
-    };
-  });
-}
-
-export function parseEstoque(rows: Record<string, unknown>[]): EstoqueInsert[] {
-  return rows.map((r) => {
-    const n = rowToNormalized(r);
-    return {
-      sn: String(n["SN"] ?? "").trim() || null,
-      cod_produto: String(n["COD.PRODUTO"] ?? n["CÓD. DO PRODUTO"] ?? "").trim() || null,
-      produto: String(n["PRODUTO"] ?? "").trim() || null,
-      fabricante: String(n["FABRICANTE"] ?? "").trim() || null,
-      sac: String(n["SAC"] ?? "").trim() || null,
-      cd: String(n["CD"] ?? "").trim() || null,
-      empresa: String(n["EMPRESA"] ?? "").trim() || null,
-      tipo: String(n["TIPO"] ?? "").trim() || null,
-      status: String(n["STATUS"] ?? "").trim() || null,
-      previsao_envio: parseExcelDate(n["PREVISÃO DE ENVIO"] ?? n["PREVISAO DE ENVIO"]),
-      nf_retorno: String(n["NF DE RETORNO"] ?? "").trim() || null,
-      nf_envio_fabricante: String(n["NF DE ENVIO P/ FABRICANTE"] ?? "").trim() || null,
-      data_envio: parseExcelDate(n["DATA DE ENVIO"]),
-      custo_produto: n["CUSTO DO PRODUTO"] != null ? Number(n["CUSTO DO PRODUTO"]) || null : null,
     };
   });
 }
