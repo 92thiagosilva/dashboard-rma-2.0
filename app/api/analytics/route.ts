@@ -103,6 +103,7 @@ export async function GET(req: NextRequest) {
         totalInversores: result.total_inversores ?? 0,
         taxa,
         ...(temKw ? { linkedRMAKw: linkedKw, totalInversoresKw: invKw, taxaKw } : {}),
+        ...(searchParams.get("debug") === "1" ? { _rawKeys: Object.keys(data ?? {}), _raw: data } : {}),
       });
     }
 
