@@ -55,23 +55,5 @@ export type Database = {
         Update: never;
       };
     };
-    Views: {
-      v_taxa_falha_modelo: {
-        Row: {
-          produto: string | null;
-          fabricante: string | null;
-          total_rma: number;
-          total_vendas: number;
-          taxa_falha_pct: number;
-          mttf_medio_dias: number | null;
-        };
-      };
-      v_top_defeitos: {
-        Row: { problematica: string; total: number; pct: number };
-      };
-      v_distribuicao_regional: {
-        Row: { estado: string; total_rma: number };
-      };
-    };
   };
 };
