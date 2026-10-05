@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { KPIGrid } from "@/components/dashboard/KPIGrid";
+import { FabricanteBreakdown } from "@/components/dashboard/FabricanteBreakdown";
 import { InsightsGrid } from "@/components/dashboard/InsightsGrid";
 import { TimelineChart } from "@/components/dashboard/TimelineChart";
 import { ModelFailureChart } from "@/components/dashboard/ModelFailureChart";
@@ -15,6 +16,7 @@ export default function DashboardPage() {
       <main className="flex-1 overflow-y-auto bg-slate-50 p-6">
         <div className="max-w-[1400px] mx-auto">
           <KPIGrid />
+          <FabricanteBreakdown />
           <InsightsGrid />
           <div className="grid grid-cols-2 gap-4 mb-5">
             <TimelineChart />
