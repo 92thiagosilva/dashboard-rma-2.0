@@ -99,42 +99,39 @@ export function FabricanteBreakdown() {
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 border-l-4 border-l-indigo-400 shadow-card mb-5 overflow-hidden">
-      <div className="px-5 pt-4 pb-3 border-b border-slate-100">
-        <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-0.5">
+      <div className="px-4 pt-3 pb-2 border-b border-slate-100">
+        <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">
           Taxas por Fabricante Selecionado
-        </p>
-        <p className="text-xs text-slate-400 leading-relaxed">
-          Taxa de Falha (global, RMAs do período) e por Coorte de Venda, por fabricante selecionado no filtro
         </p>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead>
-            <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="text-left font-bold px-5 py-2.5">Fabricante</th>
-              <th className="text-right font-bold px-5 py-2.5">Taxa Global</th>
-              <th className="text-right font-bold px-5 py-2.5">Taxa por Coorte</th>
-              <th className="text-right font-bold px-5 py-2.5">RMAs (período)</th>
-              <th className="text-right font-bold px-5 py-2.5">RMAs vinc.</th>
-              <th className="text-right font-bold px-5 py-2.5">Inversores</th>
+            <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+              <th className="text-left font-bold px-4 py-1.5">Fabricante</th>
+              <th className="text-right font-bold px-4 py-1.5">Taxa Global</th>
+              <th className="text-right font-bold px-4 py-1.5">Taxa Coorte</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">RMA per.</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">RMA vinc.</th>
+              <th className="text-right font-bold px-4 py-1.5">Inversores</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.fabricante} className="border-t border-slate-50 hover:bg-slate-50/60 transition-colors">
-                <td className="px-5 py-2.5 font-medium text-slate-700 truncate max-w-[220px]" title={r.fabricante}>
+                <td className="px-4 py-1 font-medium text-slate-700 truncate max-w-[200px]" title={r.fabricante}>
                   {r.fabricante}
                 </td>
-                <td className={`px-5 py-2.5 text-right font-bold ${taxaColor(r.taxaGlobal)}`}>
+                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaGlobal)}`}>
                   {loading && !cohortData[r.fabricante] ? "…" : `${r.taxaGlobal.toFixed(2)}%`}
                 </td>
-                <td className={`px-5 py-2.5 text-right font-bold ${taxaColor(r.taxaCoorte)}`}>
+                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaCoorte)}`}>
                   {loading && !cohortData[r.fabricante] ? "…" : `${r.taxaCoorte.toFixed(2)}%`}
                 </td>
-                <td className="px-5 py-2.5 text-right text-slate-500">{r.globalRma.toLocaleString("pt-BR")}</td>
-                <td className="px-5 py-2.5 text-right text-slate-500">{r.cohortRma.toLocaleString("pt-BR")}</td>
-                <td className="px-5 py-2.5 text-right text-slate-500">{r.inversores.toLocaleString("pt-BR")}</td>
+                <td className="px-4 py-1 text-right text-slate-400">{r.globalRma.toLocaleString("pt-BR")}</td>
+                <td className="px-4 py-1 text-right text-slate-400">{r.cohortRma.toLocaleString("pt-BR")}</td>
+                <td className="px-4 py-1 text-right text-slate-400">{r.inversores.toLocaleString("pt-BR")}</td>
               </tr>
             ))}
           </tbody>
