@@ -30,9 +30,12 @@ export function FabricanteBreakdown() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [cohort, setCohort] = useState<Record<string, Cohort>>({});
   const fetchingRef = useRef<Set<string>>(new Set());
+  const queueRef = useRef<TreeNode[]>([]);
+  const activeRef = useRef(0);
   const genRef = useRef(0);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+  const MAX_CONC = 4;
 
   // Árvore: fabricante -> tipo alimentação -> classificação -> potência -> modelo
   const forest = useMemo(() => {
@@ -128,6 +131,7 @@ export function FabricanteBreakdown() {
     setCohort({});
     setExpanded(new Set());
     fetchingRef.current = new Set();
+    queueRef.current = [];
   }, [fsig]);
 
   // Nós visíveis (topo + filhos de nós expandidos)
@@ -143,13 +147,13 @@ export function FabricanteBreakdown() {
     return out;
   }, [forest, expanded]);
 
-  // Busca cohort (vendido + corte) para cada nó visível, de forma independente.
-  // Cada resultado é aplicado assim que chega; nada é cancelado no meio do caminho
-  // (evita travar em "…"). Um "generation guard" descarta respostas de filtros antigos.
-  useEffect(() => {
-    for (const n of visible) {
-      if (n.key in cohort || fetchingRef.current.has(n.key)) continue;
-      fetchingRef.current.add(n.key);
+  // Pump: processa a fila respeitando o limite de concorrência (sem cancelar em voo,
+  // para não travar em "…"). Um "generation guard" descarta respostas de filtros antigos.
+  const pumpRef = useRef<() => void>(() => {});
+  pumpRef.current = () => {
+    while (activeRef.current < MAX_CONC && queueRef.current.length > 0) {
+      const n = queueRef.current.shift()!;
+      activeRef.current++;
       const gen = genRef.current;
       (async () => {
         let result: Cohort = { inv: 0, linked: 0, invKw: 0, linkedKw: 0 };
@@ -171,12 +175,24 @@ export function FabricanteBreakdown() {
           // mantém zeros
         } finally {
           fetchingRef.current.delete(n.key);
+          activeRef.current--;
         }
         if (mountedRef.current && gen === genRef.current) {
           setCohort((prev) => ({ ...prev, [n.key]: result }));
         }
+        pumpRef.current();
       })();
     }
+  };
+
+  // Enfileira nós visíveis ainda não carregados
+  useEffect(() => {
+    for (const n of visible) {
+      if (n.key in cohort || fetchingRef.current.has(n.key)) continue;
+      fetchingRef.current.add(n.key);
+      queueRef.current.push(n);
+    }
+    pumpRef.current();
   }, [visible, cohort, filters.dateStart, filters.dateEnd, filters.apenasAtivos]);
 
   const toggle = (key: string) =>

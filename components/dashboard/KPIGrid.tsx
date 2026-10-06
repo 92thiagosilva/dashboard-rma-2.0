@@ -76,10 +76,16 @@ export function KPIGrid() {
         if (modelosFiltered) params.set("modelos", filters.modelos.join(","));
         if (filters.apenasAtivos) params.set("apenasAtivos", "1");
 
-        const res = await fetch(`/api/analytics?${params}`);
-        if (!res.ok || cancelled) return;
-        const data: CohortData = await res.json();
-        if (!cancelled) setCohort(data);
+        // Retry: o RPC global pode falhar (timeout) sob carga inicial. Tenta até 3x.
+        let data: (CohortData & { _rpcError?: string }) | null = null;
+        for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
+          if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+          const res = await fetch(`/api/analytics?${params}`);
+          if (!res.ok || cancelled) return;
+          data = await res.json();
+          if (!data?._rpcError) break; // sucesso
+        }
+        if (!cancelled && data) setCohort(data);
       } catch {
         // ignora
       } finally {
