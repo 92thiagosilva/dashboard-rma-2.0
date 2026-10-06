@@ -28,6 +28,9 @@ export function FabricanteBreakdown() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [cohort, setCohort] = useState<Record<string, Cohort>>({});
   const fetchingRef = useRef<Set<string>>(new Set());
+  const genRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // Árvore de grupos a partir do rmaData (fabricante -> tipo -> classificação)
   const forest = useMemo(() => {
@@ -85,6 +88,7 @@ export function FabricanteBreakdown() {
   // Invalida cache quando filtros mudam
   const fsig = `${filters.dateStart}|${filters.dateEnd}|${filters.apenasAtivos}|${selectedKey}`;
   useEffect(() => {
+    genRef.current++;
     setCohort({});
     setExpanded(new Set());
     fetchingRef.current = new Set();
@@ -103,34 +107,37 @@ export function FabricanteBreakdown() {
     return out;
   }, [forest, expanded]);
 
-  // Busca cohort (vendido + corte) para os nós visíveis ainda não carregados
+  // Busca cohort (vendido + corte) para cada nó visível, de forma independente.
+  // Cada resultado é aplicado assim que chega; nada é cancelado no meio do caminho
+  // (evita travar em "…"). Um "generation guard" descarta respostas de filtros antigos.
   useEffect(() => {
-    const toFetch = visible.filter((n) => !(n.key in cohort) && !fetchingRef.current.has(n.key));
-    if (toFetch.length === 0) return;
-    toFetch.forEach((n) => fetchingRef.current.add(n.key));
-    let cancelled = false;
-    (async () => {
-      const results = await Promise.all(
-        toFetch.map(async (n): Promise<[string, Cohort]> => {
-          try {
-            const params = new URLSearchParams({ type: "cohort", fabricantes: n.fabricante });
-            if (filters.dateStart) params.set("dateStart", filters.dateStart);
-            if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
-            if (filters.apenasAtivos) params.set("apenasAtivos", "1");
-            if (n.level > 0 && n.produtos.length) params.set("modelos", n.produtos.join(","));
-            const r = await fetch(`/api/analytics?${params}`);
-            if (!r.ok) return [n.key, { inv: 0, linked: 0 }];
+    for (const n of visible) {
+      if (n.key in cohort || fetchingRef.current.has(n.key)) continue;
+      fetchingRef.current.add(n.key);
+      const gen = genRef.current;
+      (async () => {
+        let result: Cohort = { inv: 0, linked: 0 };
+        try {
+          const params = new URLSearchParams({ type: "cohort", fabricantes: n.fabricante });
+          if (filters.dateStart) params.set("dateStart", filters.dateStart);
+          if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
+          if (filters.apenasAtivos) params.set("apenasAtivos", "1");
+          if (n.level > 0 && n.produtos.length) params.set("modelos", n.produtos.join(","));
+          const r = await fetch(`/api/analytics?${params}`);
+          if (r.ok) {
             const d = await r.json();
-            return [n.key, { inv: d.totalInversores ?? 0, linked: d.linkedRMACount ?? 0 }];
-          } catch {
-            return [n.key, { inv: 0, linked: 0 }];
+            result = { inv: d.totalInversores ?? 0, linked: d.linkedRMACount ?? 0 };
           }
-        })
-      );
-      if (cancelled) return;
-      setCohort((prev) => ({ ...prev, ...Object.fromEntries(results) }));
-    })();
-    return () => { cancelled = true; };
+        } catch {
+          // mantém zeros
+        } finally {
+          fetchingRef.current.delete(n.key);
+        }
+        if (mountedRef.current && gen === genRef.current) {
+          setCohort((prev) => ({ ...prev, [n.key]: result }));
+        }
+      })();
+    }
   }, [visible, cohort, filters.dateStart, filters.dateEnd, filters.apenasAtivos]);
 
   const toggle = (key: string) =>
