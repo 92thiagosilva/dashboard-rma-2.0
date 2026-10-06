@@ -92,44 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_estoque_status ON estoque_danificado(status);
 CREATE INDEX IF NOT EXISTS idx_estoque_fabricante ON estoque_danificado(fabricante);
 CREATE INDEX IF NOT EXISTS idx_estoque_tipo ON estoque_danificado(tipo);
 
--- Views úteis para o dashboard
-
--- View: resumo por modelo com taxa de falha
-CREATE OR REPLACE VIEW v_taxa_falha_modelo AS
-SELECT
-  r.produto,
-  r.fabricante,
-  COUNT(r.id) AS total_rma,
-  COALESCE(SUM(v.quantidade_vendida), 0) AS total_vendas,
-  CASE
-    WHEN COALESCE(SUM(v.quantidade_vendida), 0) > 0
-    THEN ROUND((COUNT(r.id)::numeric / SUM(v.quantidade_vendida) * 100), 2)
-    ELSE 0
-  END AS taxa_falha_pct,
-  ROUND(AVG(r.mttf_dias), 0) AS mttf_medio_dias
-FROM rma r
-LEFT JOIN vendas v ON UPPER(TRIM(v.descricao_produto)) = UPPER(TRIM(r.produto))
-GROUP BY r.produto, r.fabricante
-ORDER BY taxa_falha_pct DESC;
-
--- View: top defeitos
-CREATE OR REPLACE VIEW v_top_defeitos AS
-SELECT
-  problematica,
-  COUNT(*) AS total,
-  ROUND(COUNT(*)::numeric / SUM(COUNT(*)) OVER () * 100, 2) AS pct
-FROM rma
-WHERE problematica IS NOT NULL AND problematica != ''
-GROUP BY problematica
-ORDER BY total DESC
-LIMIT 20;
-
--- View: distribuição regional
-CREATE OR REPLACE VIEW v_distribuicao_regional AS
-SELECT
-  estado,
-  COUNT(*) AS total_rma
-FROM rma
-WHERE estado IS NOT NULL
-GROUP BY estado
-ORDER BY total_rma DESC;
+-- As views v_taxa_falha_modelo, v_top_defeitos e v_distribuicao_regional foram
+-- removidas: não eram usadas pelo app (os cálculos são feitos no cliente) e o
+-- Supabase Advisor as marcava como CRITICAL (Security Definer View).
+-- Veja 012_drop_security_definer_views.sql.
