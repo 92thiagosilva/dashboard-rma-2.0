@@ -16,7 +16,7 @@ interface TreeNode {
   children: TreeNode[];
 }
 
-interface Cohort { inv: number; linked: number; invKw: number; linkedKw: number }
+interface Cohort { inv: number; linked: number; invKw: number; linkedKw: number; failed?: boolean }
 
 function taxaColor(t: number) {
   return t > 5 ? "text-red-500" : t > 2 ? "text-amber-500" : "text-emerald-500";
@@ -156,23 +156,31 @@ export function FabricanteBreakdown() {
       activeRef.current++;
       const gen = genRef.current;
       (async () => {
-        let result: Cohort = { inv: 0, linked: 0, invKw: 0, linkedKw: 0 };
+        // Falha (HTTP != 200, erro do RPC ou timeout) NÃO vira zero: tenta até 3 vezes e,
+        // se continuar falhando, marca o nó como "failed" (exibido como "—").
+        let result: Cohort = { inv: 0, linked: 0, invKw: 0, linkedKw: 0, failed: true };
         try {
           const params = new URLSearchParams({ type: "cohort", fabricantes: n.fabricante });
           if (filters.dateStart) params.set("dateStart", filters.dateStart);
           if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
           if (filters.apenasAtivos) params.set("apenasAtivos", "1");
           if (n.level > 0 && n.produtos.length) params.set("modelos", n.produtos.join(","));
-          const r = await fetch(`/api/analytics?${params}`);
-          if (r.ok) {
-            const d = await r.json();
-            result = {
-              inv: d.totalInversores ?? 0, linked: d.linkedRMACount ?? 0,
-              invKw: d.totalInversoresKw ?? 0, linkedKw: d.linkedRMAKw ?? 0,
-            };
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) await new Promise((res) => setTimeout(res, 1500 * attempt));
+            try {
+              const r = await fetch(`/api/analytics?${params}`);
+              if (!r.ok) continue;
+              const d = await r.json();
+              if (d._rpcError) continue;
+              result = {
+                inv: d.totalInversores ?? 0, linked: d.linkedRMACount ?? 0,
+                invKw: d.totalInversoresKw ?? 0, linkedKw: d.linkedRMAKw ?? 0,
+              };
+              break;
+            } catch {
+              // tenta de novo
+            }
           }
-        } catch {
-          // mantém zeros
         } finally {
           fetchingRef.current.delete(n.key);
           activeRef.current--;
@@ -232,13 +240,15 @@ export function FabricanteBreakdown() {
           <tbody>
             {visible.map((n) => {
               const c = cohort[n.key];
+              const loaded = !!c && !c.failed;
+              const placeholder = c?.failed ? "—" : "…";
               const hasChildren = n.children.length > 0;
               const isOpen = expanded.has(n.key);
-              const vendido = c ? (emKW ? c.invKw : c.inv) : 0;
+              const vendido = loaded ? (emKW ? c!.invKw : c!.inv) : 0;
               const rmaGlobal = emKW ? n.rmaGlobalKw : n.rmaGlobal;
-              const corte = c ? (emKW ? c.linkedKw : c.linked) : 0;
-              const taxaGlobal = c && vendido > 0 ? (rmaGlobal / vendido) * 100 : 0;
-              const taxaCorte = c && vendido > 0 ? (corte / vendido) * 100 : 0;
+              const corte = loaded ? (emKW ? c!.linkedKw : c!.linked) : 0;
+              const taxaGlobal = loaded && vendido > 0 ? (rmaGlobal / vendido) * 100 : 0;
+              const taxaCorte = loaded && vendido > 0 ? (corte / vendido) * 100 : 0;
               const nameColor = n.level === 0 ? "text-slate-700 font-semibold" : n.level === 1 ? "text-slate-600" : n.level === 2 ? "text-slate-500" : "text-slate-400";
               return (
                 <tr
@@ -254,15 +264,15 @@ export function FabricanteBreakdown() {
                       {n.label}
                     </span>
                   </td>
-                  <td className={`px-4 py-1 text-right font-bold ${c ? taxaColor(taxaGlobal) : "text-slate-300"}`}>
-                    {c ? `${taxaGlobal.toFixed(2)}%` : "…"}
+                  <td className={`px-4 py-1 text-right font-bold ${loaded ? taxaColor(taxaGlobal) : "text-slate-300"}`}>
+                    {loaded ? `${taxaGlobal.toFixed(2)}%` : placeholder}
                   </td>
-                  <td className={`px-4 py-1 text-right font-bold ${c ? taxaColor(taxaCorte) : "text-slate-300"}`}>
-                    {c ? `${taxaCorte.toFixed(2)}%` : "…"}
+                  <td className={`px-4 py-1 text-right font-bold ${loaded ? taxaColor(taxaCorte) : "text-slate-300"}`}>
+                    {loaded ? `${taxaCorte.toFixed(2)}%` : placeholder}
                   </td>
-                  <td className="px-4 py-1 text-right text-slate-400">{c ? fmt(vendido) : "…"}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{loaded ? fmt(vendido) : placeholder}</td>
                   <td className="px-4 py-1 text-right text-slate-400">{fmt(rmaGlobal)}</td>
-                  <td className="px-4 py-1 text-right text-slate-400">{c ? fmt(corte) : "…"}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{loaded ? fmt(corte) : placeholder}</td>
                 </tr>
               );
             })}
