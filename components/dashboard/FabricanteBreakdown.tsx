@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDashboard } from "@/lib/store";
 import { CaretRight, CaretDown } from "@phosphor-icons/react";
-import { normalizaKW, normProd } from "@/lib/units";
+import { normalizaKW, normProd, criaResolverPotencia, formataValor } from "@/lib/units";
 
 interface TreeNode {
   key: string;
@@ -12,10 +12,11 @@ interface TreeNode {
   fabricante: string;
   produtos: string[];   // produtos (rma.produto) do grupo — enviados ao cohort como modelos
   rmaGlobal: number;    // RMAs do período (SAC único) deste grupo — a partir do rmaData
+  rmaGlobalKw: number;  // soma da potência (1 valor por SAC) do grupo
   children: TreeNode[];
 }
 
-interface Cohort { inv: number; linked: number }
+interface Cohort { inv: number; linked: number; invKw: number; linkedKw: number }
 
 function taxaColor(t: number) {
   return t > 5 ? "text-red-500" : t > 2 ? "text-amber-500" : "text-emerald-500";
@@ -35,8 +36,12 @@ export function FabricanteBreakdown() {
 
   // Árvore: fabricante -> tipo alimentação -> classificação -> potência -> modelo
   const forest = useMemo(() => {
-    type Agg = { sac: Set<string>; prod: Set<string> };
-    const mk = (): Agg => ({ sac: new Set(), prod: new Set() });
+    const resolver = criaResolverPotencia(powerMap);
+    const rmaKW = (pot: number | null, prod: string | null) => normalizaKW(pot) ?? resolver(prod) ?? 0;
+    type SacRow = { pot: number | null; prod: string | null };
+    type Agg = { sac: Map<string, SacRow>; prod: Set<string> };
+    const mk = (): Agg => ({ sac: new Map(), prod: new Set() });
+    const kwOf = (a: Agg) => { let k = 0; for (const r of a.sac.values()) k += rmaKW(r.pot, r.prod); return k; };
     type PotAgg = Agg & { label: string; modelos: Map<string, Agg> };
     type ClassAgg = Agg & { pots: Map<string, PotAgg> };
     type TipoAgg = Agg & { classes: Map<string, ClassAgg> };
@@ -57,26 +62,28 @@ export function FabricanteBreakdown() {
       const potKey = kw != null ? String(kw) : "—";
       const potLabel = kw != null ? `${kw.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kW` : "Sem potência";
 
+      const sacRow: SacRow = { pot: r.potencia, prod: prod ?? null };
+
       let f = fabs.get(fab);
       if (!f) { f = { ...mk(), tipos: new Map() }; fabs.set(fab, f); }
-      f.sac.add(sacKey); if (prod) f.prod.add(prod);
+      f.sac.set(sacKey, sacRow); if (prod) f.prod.add(prod);
 
       let t = f.tipos.get(tipo);
       if (!t) { t = { ...mk(), classes: new Map() }; f.tipos.set(tipo, t); }
-      t.sac.add(sacKey); if (prod) t.prod.add(prod);
+      t.sac.set(sacKey, sacRow); if (prod) t.prod.add(prod);
 
       let c = t.classes.get(classif);
       if (!c) { c = { ...mk(), pots: new Map() }; t.classes.set(classif, c); }
-      c.sac.add(sacKey); if (prod) c.prod.add(prod);
+      c.sac.set(sacKey, sacRow); if (prod) c.prod.add(prod);
 
       let p = c.pots.get(potKey);
       if (!p) { p = { ...mk(), label: potLabel, modelos: new Map() }; c.pots.set(potKey, p); }
-      p.sac.add(sacKey); if (prod) p.prod.add(prod);
+      p.sac.set(sacKey, sacRow); if (prod) p.prod.add(prod);
 
       if (prod) {
         let m = p.modelos.get(prod);
         if (!m) { m = mk(); p.modelos.set(prod, m); }
-        m.sac.add(sacKey); m.prod.add(prod);
+        m.sac.set(sacKey, sacRow); m.prod.add(prod);
       }
     }
 
@@ -88,28 +95,28 @@ export function FabricanteBreakdown() {
             const modelos = [...p.modelos.entries()].sort(bySac).map(([prod, m]): TreeNode => ({
               key: `F:${fab}|T:${tipo}|C:${classif}|P:${potKey}|M:${prod}`,
               label: prod, level: 4, fabricante: fab,
-              produtos: [prod], rmaGlobal: m.sac.size, children: [],
+              produtos: [prod], rmaGlobal: m.sac.size, rmaGlobalKw: kwOf(m), children: [],
             }));
             return {
               key: `F:${fab}|T:${tipo}|C:${classif}|P:${potKey}`,
               label: p.label, level: 3, fabricante: fab,
-              produtos: [...p.prod], rmaGlobal: p.sac.size, children: modelos,
+              produtos: [...p.prod], rmaGlobal: p.sac.size, rmaGlobalKw: kwOf(p), children: modelos,
             } as TreeNode;
           });
           return {
             key: `F:${fab}|T:${tipo}|C:${classif}`,
             label: classif, level: 2, fabricante: fab,
-            produtos: [...c.prod], rmaGlobal: c.sac.size, children: pots,
+            produtos: [...c.prod], rmaGlobal: c.sac.size, rmaGlobalKw: kwOf(c), children: pots,
           } as TreeNode;
         });
         return {
           key: `F:${fab}|T:${tipo}`, label: tipo, level: 1, fabricante: fab,
-          produtos: [...t.prod], rmaGlobal: t.sac.size, children: classes,
+          produtos: [...t.prod], rmaGlobal: t.sac.size, rmaGlobalKw: kwOf(t), children: classes,
         } as TreeNode;
       });
       return {
         key: `F:${fab}`, label: fab, level: 0, fabricante: fab,
-        produtos: [...f.prod], rmaGlobal: f.sac.size, children: tipos,
+        produtos: [...f.prod], rmaGlobal: f.sac.size, rmaGlobalKw: kwOf(f), children: tipos,
       } as TreeNode;
     });
   }, [rmaData, selectedKey, powerMap]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -145,7 +152,7 @@ export function FabricanteBreakdown() {
       fetchingRef.current.add(n.key);
       const gen = genRef.current;
       (async () => {
-        let result: Cohort = { inv: 0, linked: 0 };
+        let result: Cohort = { inv: 0, linked: 0, invKw: 0, linkedKw: 0 };
         try {
           const params = new URLSearchParams({ type: "cohort", fabricantes: n.fabricante });
           if (filters.dateStart) params.set("dateStart", filters.dateStart);
@@ -155,7 +162,10 @@ export function FabricanteBreakdown() {
           const r = await fetch(`/api/analytics?${params}`);
           if (r.ok) {
             const d = await r.json();
-            result = { inv: d.totalInversores ?? 0, linked: d.linkedRMACount ?? 0 };
+            result = {
+              inv: d.totalInversores ?? 0, linked: d.linkedRMACount ?? 0,
+              invKw: d.totalInversoresKw ?? 0, linkedKw: d.linkedRMAKw ?? 0,
+            };
           }
         } catch {
           // mantém zeros
@@ -178,14 +188,15 @@ export function FabricanteBreakdown() {
 
   if (selectedFabs.length === 0) return null;
 
+  const emKW = unidade === "kw";
   const levelPad = ["pl-4", "pl-9", "pl-14", "pl-20", "pl-24"];
+  const fmt = (v: number) => (emKW ? formataValor(v, unidade) : v.toLocaleString("pt-BR"));
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 border-l-4 border-l-indigo-400 shadow-card mb-5 overflow-hidden">
       <div className="px-4 pt-3 pb-2 border-b border-slate-100">
         <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">
           Taxas por Fabricante Selecionado
-          {unidade === "kw" && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
         </p>
         <p className="text-[10px] text-slate-400 mt-0.5">Clique para expandir: Fabricante → Tipo de Alimentação → Classificação → Potência → Modelo</p>
       </div>
@@ -197,9 +208,9 @@ export function FabricanteBreakdown() {
               <th className="text-left font-bold px-4 py-1.5">Grupo</th>
               <th className="text-right font-bold px-4 py-1.5">Taxa Global</th>
               <th className="text-right font-bold px-4 py-1.5">Taxa Corte</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">Qtd. Vendido</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">Qtd. RMA (Global)</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">Qtd. RMA (Corte)</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW Vendido" : "Qtd. Vendido"}</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Global)" : "Qtd. RMA (Global)"}</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Corte)" : "Qtd. RMA (Corte)"}</th>
             </tr>
           </thead>
           <tbody>
@@ -207,8 +218,11 @@ export function FabricanteBreakdown() {
               const c = cohort[n.key];
               const hasChildren = n.children.length > 0;
               const isOpen = expanded.has(n.key);
-              const taxaGlobal = c && c.inv > 0 ? (n.rmaGlobal / c.inv) * 100 : 0;
-              const taxaCorte = c && c.inv > 0 ? (c.linked / c.inv) * 100 : 0;
+              const vendido = c ? (emKW ? c.invKw : c.inv) : 0;
+              const rmaGlobal = emKW ? n.rmaGlobalKw : n.rmaGlobal;
+              const corte = c ? (emKW ? c.linkedKw : c.linked) : 0;
+              const taxaGlobal = c && vendido > 0 ? (rmaGlobal / vendido) * 100 : 0;
+              const taxaCorte = c && vendido > 0 ? (corte / vendido) * 100 : 0;
               const nameColor = n.level === 0 ? "text-slate-700 font-semibold" : n.level === 1 ? "text-slate-600" : n.level === 2 ? "text-slate-500" : "text-slate-400";
               return (
                 <tr
@@ -230,9 +244,9 @@ export function FabricanteBreakdown() {
                   <td className={`px-4 py-1 text-right font-bold ${c ? taxaColor(taxaCorte) : "text-slate-300"}`}>
                     {c ? `${taxaCorte.toFixed(2)}%` : "…"}
                   </td>
-                  <td className="px-4 py-1 text-right text-slate-400">{c ? c.inv.toLocaleString("pt-BR") : "…"}</td>
-                  <td className="px-4 py-1 text-right text-slate-400">{n.rmaGlobal.toLocaleString("pt-BR")}</td>
-                  <td className="px-4 py-1 text-right text-slate-400">{c ? c.linked.toLocaleString("pt-BR") : "…"}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{c ? fmt(vendido) : "…"}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{fmt(rmaGlobal)}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{c ? fmt(corte) : "…"}</td>
                 </tr>
               );
             })}
