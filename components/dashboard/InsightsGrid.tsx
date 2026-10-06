@@ -174,6 +174,8 @@ export function InsightsGrid() {
           rmaData={rmaData}
           vendasData={vendasData}
           filters={filters}
+          unidade={unidade}
+          powerMap={powerMap}
           onClose={() => setSelection(null)}
         />
       )}

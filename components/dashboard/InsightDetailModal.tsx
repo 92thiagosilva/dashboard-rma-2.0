@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { X, Package, Warning, MapPin, Lightning, SpinnerGap } from "@phosphor-icons/react";
 import type { RMARow, VendasRow } from "@/lib/store";
 import type { FilterState } from "@/lib/analytics";
+import { criaResolverPotencia, normalizaKW, formataValor, type Unidade } from "@/lib/units";
 
 export type InsightSelection =
   | { type: "produto"; key: string; color: "purple" | "red" }
@@ -16,6 +17,8 @@ interface Props {
   rmaData: RMARow[];
   vendasData: VendasRow[];
   filters: FilterState;
+  unidade: Unidade;
+  powerMap: Record<string, number>;
   onClose: () => void;
 }
 
@@ -33,7 +36,7 @@ interface CohortData {
   taxa: number;
 }
 
-export function InsightDetailModal({ selection, rmaData, vendasData, filters, onClose }: Props) {
+export function InsightDetailModal({ selection, rmaData, vendasData, filters, unidade, powerMap, onClose }: Props) {
   const [cohort, setCohort] = useState<CohortData | null>(null);
   const [cohortLoading, setCohortLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -72,19 +75,28 @@ export function InsightDetailModal({ selection, rmaData, vendasData, filters, on
   }, [selection, filters.dateStart, filters.dateEnd]);
 
   const detail = useMemo(() => {
+    const emKW = unidade === "kw";
+    const resolver = criaResolverPotencia(powerMap);
+    const rowKw = (r: RMARow) => normalizaKW(r.potencia) ?? resolver(r.produto) ?? 0;
+    const peso = (r: RMARow) => (emKW ? rowKw(r) : 1);
+
     if (selection.type === "produto") {
       const key = selection.key;
       const rows = rmaData.filter((r) => r.produto === key);
 
       // Vendidos: match case-insensitive (mesma lógica dos KPIs / cohort)
       const nk = norm(key);
-      const vendidos = vendasData.reduce(
-        (s, v) => (norm(v.descricao_produto) === nk ? s + (v.quantidade_vendida ?? 0) : s), 0
-      );
+      const vendidos = vendasData.reduce((s, v) => {
+        if (norm(v.descricao_produto) !== nk) return s;
+        const q = v.quantidade_vendida ?? 0;
+        return s + (emKW ? q * (resolver(v.descricao_produto) ?? 0) : q);
+      }, 0);
 
       // Total RMA deduplicado por SAC (consistente com KPI global)
-      const sacSet = new Set(rows.map((r) => r.sac ?? `__id_${r.id}`));
-      const totalRMA = sacSet.size;
+      const sacRep = new Map<string, RMARow>();
+      for (const r of rows) { const k = r.sac ?? `__id_${r.id}`; if (!sacRep.has(k)) sacRep.set(k, r); }
+      let totalRMA = 0;
+      if (emKW) { for (const r of sacRep.values()) totalRMA += rowKw(r); } else { totalRMA = sacRep.size; }
 
       const defeitos: Record<string, number> = {};
       const estados: Record<string, number> = {};
@@ -92,8 +104,9 @@ export function InsightDetailModal({ selection, rmaData, vendasData, filters, on
       let mttfSoma = 0, mttfCount = 0;
       let fabricante = "—";
       for (const r of rows) {
-        if (r.problematica) defeitos[r.problematica] = (defeitos[r.problematica] ?? 0) + 1;
-        if (r.estado) estados[r.estado] = (estados[r.estado] ?? 0) + 1;
+        const w = peso(r);
+        if (r.problematica) defeitos[r.problematica] = (defeitos[r.problematica] ?? 0) + w;
+        if (r.estado) estados[r.estado] = (estados[r.estado] ?? 0) + w;
         if (r.classificacao) classes[r.classificacao] = (classes[r.classificacao] ?? 0) + 1;
         if (r.mttf_dias && r.mttf_dias > 0 && r.mttf_dias < 36500) { mttfSoma += r.mttf_dias; mttfCount += 1; }
         if (r.fabricante) fabricante = r.fabricante;
@@ -121,23 +134,30 @@ export function InsightDetailModal({ selection, rmaData, vendasData, filters, on
     const produtos: Record<string, number> = {};
     const fabricantes: Record<string, number> = {};
     const outraDim: Record<string, number> = {}; // estados (se defeito) ou defeitos (se estado)
+    let total = 0;
     for (const r of rows) {
-      if (r.produto) produtos[r.produto] = (produtos[r.produto] ?? 0) + 1;
-      if (r.fabricante) fabricantes[r.fabricante] = (fabricantes[r.fabricante] ?? 0) + 1;
+      const w = peso(r);
+      total += w;
+      if (r.produto) produtos[r.produto] = (produtos[r.produto] ?? 0) + w;
+      if (r.fabricante) fabricantes[r.fabricante] = (fabricantes[r.fabricante] ?? 0) + w;
       const od = isDefeito ? r.estado : r.problematica;
-      if (od) outraDim[od] = (outraDim[od] ?? 0) + 1;
+      if (od) outraDim[od] = (outraDim[od] ?? 0) + w;
     }
+    const totalAll = rmaData.reduce((s, r) => s + peso(r), 0);
     return {
       kind: "dim" as const,
-      total: rows.length,
-      pctTotal: rmaData.length > 0 ? (rows.length / rmaData.length) * 100 : 0,
+      total,
+      pctTotal: totalAll > 0 ? (total / totalAll) * 100 : 0,
       produtos: topEntries(produtos),
       fabricantes: topEntries(fabricantes),
       outraDim: topEntries(outraDim),
     };
-  }, [selection, rmaData, vendasData]);
+  }, [selection, rmaData, vendasData, unidade, powerMap]);
 
   if (!mounted) return null;
+
+  const emKW = unidade === "kw";
+  const fmt = (v: number) => (emKW ? formataValor(v, unidade) : Math.round(v).toLocaleString("pt-BR"));
 
   const headerIcon =
     selection.type === "produto" ? <Package size={18} weight="duotone" /> :
@@ -184,8 +204,8 @@ export function InsightDetailModal({ selection, rmaData, vendasData, filters, on
             <>
               {/* Stat grid */}
               <div className="grid grid-cols-2 gap-3">
-                <Stat label="Inversores vendidos" value={detail.vendidos.toLocaleString("pt-BR")} accent="blue" />
-                <Stat label="Total de RMAs" value={detail.totalRMA.toLocaleString("pt-BR")} accent="red" />
+                <Stat label={emKW ? "kW vendido" : "Inversores vendidos"} value={fmt(detail.vendidos)} accent="blue" />
+                <Stat label={emKW ? "kW em RMA" : "Total de RMAs"} value={fmt(detail.totalRMA)} accent="red" />
                 <Stat
                   label="Taxa de falha (global)"
                   value={`${detail.taxaGlobal.toFixed(2)}%`}
@@ -204,17 +224,17 @@ export function InsightDetailModal({ selection, rmaData, vendasData, filters, on
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <Meta label="Fabricante" value={detail.fabricante} />
                 <Meta label="Classificação" value={detail.classificacao} />
-                <Meta label="Defeito mais comum" value={detail.topDefeito ? `${detail.topDefeito[0]} (${detail.topDefeito[1]})` : "—"} />
-                <Meta label="Estado com mais RMAs" value={detail.topEstado ? `${detail.topEstado[0]} (${detail.topEstado[1]})` : "—"} />
+                <Meta label="Defeito mais comum" value={detail.topDefeito ? `${detail.topDefeito[0]} (${fmt(detail.topDefeito[1])})` : "—"} />
+                <Meta label="Estado com mais RMAs" value={detail.topEstado ? `${detail.topEstado[0]} (${fmt(detail.topEstado[1])})` : "—"} />
                 <Meta label="MTTF médio" value={detail.mttfMedio != null ? `${detail.mttfMedio} dias` : "sem dados"} />
                 <Meta label="Linhas de RMA" value={detail.rows.toLocaleString("pt-BR")} />
               </div>
 
               {detail.defeitos.length > 0 && (
-                <ListSection title="Defeitos deste produto" icon={<Warning size={12} weight="fill" className="text-amber-500" />} entries={detail.defeitos} />
+                <ListSection title="Defeitos deste produto" icon={<Warning size={12} weight="fill" className="text-amber-500" />} entries={detail.defeitos} fmt={fmt} />
               )}
               {detail.estados.length > 0 && (
-                <ListSection title="Estados com mais RMAs" icon={<MapPin size={12} weight="fill" className="text-blue-500" />} entries={detail.estados} />
+                <ListSection title="Estados com mais RMAs" icon={<MapPin size={12} weight="fill" className="text-blue-500" />} entries={detail.estados} fmt={fmt} />
               )}
             </>
           )}
@@ -222,17 +242,18 @@ export function InsightDetailModal({ selection, rmaData, vendasData, filters, on
           {detail.kind === "dim" && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <Stat label="Total de RMAs" value={detail.total.toLocaleString("pt-BR")} accent="red" />
+                <Stat label={emKW ? "kW em RMA" : "Total de RMAs"} value={fmt(detail.total)} accent="red" />
                 <Stat label="% do total filtrado" value={`${detail.pctTotal.toFixed(1)}%`} accent="purple" />
               </div>
 
-              <ListSection title="Produtos mais afetados" icon={<Package size={12} weight="fill" className="text-purple-500" />} entries={detail.produtos} />
+              <ListSection title="Produtos mais afetados" icon={<Package size={12} weight="fill" className="text-purple-500" />} entries={detail.produtos} fmt={fmt} />
               <ListSection
                 title={selection.type === "defeito" ? "Estados mais afetados" : "Defeitos mais comuns"}
                 icon={selection.type === "defeito" ? <MapPin size={12} weight="fill" className="text-blue-500" /> : <Warning size={12} weight="fill" className="text-amber-500" />}
                 entries={detail.outraDim}
+                fmt={fmt}
               />
-              <ListSection title="Fabricantes" icon={<Lightning size={12} weight="fill" className="text-slate-500" />} entries={detail.fabricantes} />
+              <ListSection title="Fabricantes" icon={<Lightning size={12} weight="fill" className="text-slate-500" />} entries={detail.fabricantes} fmt={fmt} />
             </>
           )}
         </div>
@@ -269,8 +290,8 @@ function Meta({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ListSection({ title, icon, entries }: {
-  title: string; icon: React.ReactNode; entries: [string, number][];
+function ListSection({ title, icon, entries, fmt }: {
+  title: string; icon: React.ReactNode; entries: [string, number][]; fmt: (n: number) => string;
 }) {
   const max = entries[0]?.[1] ?? 1;
   return (
@@ -286,7 +307,7 @@ function ListSection({ title, icon, entries }: {
             <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden shrink-0">
               <div className="h-full bg-slate-300 rounded-full" style={{ width: `${(count / max) * 100}%` }} />
             </div>
-            <span className="text-xs font-semibold text-slate-700 shrink-0 w-8 text-right">{count}</span>
+            <span className="text-xs font-semibold text-slate-700 shrink-0 w-12 text-right">{fmt(count)}</span>
           </div>
         ))}
       </div>
