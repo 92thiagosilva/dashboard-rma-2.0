@@ -1,16 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDashboard } from "@/lib/store";
-import { criaResolverPotencia, normalizaKW, formataValor, normProd } from "@/lib/units";
+import { criaResolverPotencia, normalizaKW, formataValor } from "@/lib/units";
+
+interface CohortByFab {
+  linked: number;
+  inv: number;
+  linkedKw?: number;
+  invKw?: number;
+}
 
 interface FabRow {
   fabricante: string;
-  vendido: number;
-  rmaGlobal: number;
-  rmaCorte: number;
+  globalRma: number;
+  cohortRma: number;
+  inversores: number;
   taxaGlobal: number;
-  taxaCorte: number;
+  taxaCoorte: number;
 }
 
 function taxaColor(t: number) {
@@ -18,98 +25,103 @@ function taxaColor(t: number) {
 }
 
 export function FabricanteBreakdown() {
-  const { rmaData, vendasData, cohortBase, filters, unidade, powerMap } = useDashboard();
-  const emKW = unidade === "kw";
+  const { rmaData, filters, unidade, powerMap } = useDashboard();
+  const [cohortData, setCohortData] = useState<Record<string, CohortByFab>>({});
+  const [loading, setLoading] = useState(false);
+
   const selectedFabs = filters.fabricantes;
+  const selectedKey = selectedFabs.join(",");
 
-  // Tudo calculado no cliente: inversores (vendasData do período), RMA global
-  // (rmaData do período, dedup por SAC) e RMA por coorte (cohortBase = todos os
-  // RMAs vinculados às vendas do período via nro_fotus). count + kW.
-  const rows: FabRow[] = useMemo(() => {
+  // Taxa Global: RMAs do período (SAC único) por fabricante — a partir do rmaData
+  // já filtrado. Calcula contagem e kW (soma da potência, 1 valor por SAC).
+  const globalRmaByFab = useMemo(() => {
     const resolver = criaResolverPotencia(powerMap);
-    const rmaKW = (potencia: number | null, produto: string | null) =>
-      normalizaKW(potencia) ?? resolver(produto) ?? 0;
-
-    // produto(normalizado) -> fabricante (mais frequente), p/ mapear vendas -> fabricante
-    const prodFabCount: Record<string, Record<string, number>> = {};
-    for (const r of cohortBase) {
-      if (!r.produto || !r.fabricante) continue;
-      const k = normProd(r.produto);
-      (prodFabCount[k] ??= {})[r.fabricante] = (prodFabCount[k]?.[r.fabricante] ?? 0) + 1;
-    }
-    const prodFab: Record<string, string> = {};
-    for (const k in prodFabCount) {
-      let best = ""; let bestN = -1;
-      for (const f in prodFabCount[k]) if (prodFabCount[k][f] > bestN) { bestN = prodFabCount[k][f]; best = f; }
-      prodFab[k] = best;
-    }
-
-    // Inversores vendidos (período) por fabricante + conjunto de nro_fotus
-    const invCount: Record<string, number> = {};
-    const invKw: Record<string, number> = {};
-    const fotusByFab: Record<string, Set<string>> = {};
-    for (const v of vendasData) {
-      const fab = prodFab[normProd(v.descricao_produto)];
-      if (!fab) continue;
-      const q = v.quantidade_vendida ?? 0;
-      invCount[fab] = (invCount[fab] ?? 0) + q;
-      invKw[fab] = (invKw[fab] ?? 0) + q * (resolver(v.descricao_produto) ?? 0);
-      if (v.numero_fotus) (fotusByFab[fab] ??= new Set()).add(v.numero_fotus);
-    }
-
-    // RMA Global (período) por fabricante, dedup por SAC
-    const globalSac: Record<string, Map<string, { potencia: number | null; produto: string | null }>> = {};
+    const rmaKW = (r: typeof rmaData[number]) => normalizaKW(r.potencia) ?? resolver(r.produto) ?? 0;
+    const rows: Record<string, Map<string, typeof rmaData[number]>> = {};
     for (const r of rmaData) {
       if (!r.fabricante) continue;
-      const m = (globalSac[r.fabricante] ??= new Map());
-      const key = r.sac ?? `__id_${r.id}`;
-      if (!m.has(key)) m.set(key, { potencia: r.potencia, produto: r.produto });
+      const m = (rows[r.fabricante] ??= new Map());
+      const k = r.sac ?? `__id_${r.id}`;
+      if (!m.has(k)) m.set(k, r);
     }
-
-    // RMA Corte (qualquer data) por fabricante: nro_fotus nas vendas do período daquele fabricante
-    const corteSac: Record<string, Map<string, { potencia: number | null; produto: string | null }>> = {};
-    for (const r of cohortBase) {
-      if (!r.fabricante || !r.nro_fotus) continue;
-      const set = fotusByFab[r.fabricante];
-      if (!set || !set.has(r.nro_fotus)) continue;
-      const m = (corteSac[r.fabricante] ??= new Map());
-      const key = r.sac ?? `__id_${r.id}`;
-      if (!m.has(key)) m.set(key, { potencia: r.potencia, produto: r.produto });
+    const count: Record<string, number> = {};
+    const kw: Record<string, number> = {};
+    for (const fab in rows) {
+      count[fab] = rows[fab].size;
+      let sum = 0;
+      for (const r of rows[fab].values()) sum += rmaKW(r);
+      kw[fab] = sum;
     }
+    return { count, kw };
+  }, [rmaData, powerMap]);
 
-    const sacCount = (m?: Map<string, unknown>) => m?.size ?? 0;
-    const sacKw = (m?: Map<string, { potencia: number | null; produto: string | null }>) => {
-      let kw = 0;
-      if (m) for (const r of m.values()) kw += rmaKW(r.potencia, r.produto);
-      return kw;
+  // Taxa por Coorte + inversores no período: via RPC cohort, uma chamada por
+  // fabricante selecionado (reaproveita a função existente no banco).
+  useEffect(() => {
+    if (selectedFabs.length === 0) {
+      setCohortData({});
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const entries = await Promise.all(
+        selectedFabs.map(async (fab): Promise<[string, CohortByFab]> => {
+          try {
+            const params = new URLSearchParams({ type: "cohort", fabricantes: fab });
+            if (filters.dateStart) params.set("dateStart", filters.dateStart);
+            if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
+            if (filters.apenasAtivos) params.set("apenasAtivos", "1");
+            const res = await fetch(`/api/analytics?${params}`);
+            if (!res.ok) return [fab, { linked: 0, inv: 0 }];
+            const d = await res.json();
+            return [fab, { linked: d.linkedRMACount ?? 0, inv: d.totalInversores ?? 0, linkedKw: d.linkedRMAKw, invKw: d.totalInversoresKw }];
+          } catch {
+            return [fab, { linked: 0, inv: 0 }];
+          }
+        })
+      );
+      if (cancelled) return;
+      setCohortData(Object.fromEntries(entries));
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, filters.dateStart, filters.dateEnd, filters.apenasAtivos]);
 
+  // Só exibe em kW quando a migration 008 já forneceu os campos kW
+  const kwDisponivel = Object.values(cohortData).some((c) => c.invKw != null);
+  const emKW = unidade === "kw" && kwDisponivel;
+
+  const rows: FabRow[] = useMemo(() => {
     return selectedFabs
       .map((fab) => {
-        const vendido = emKW ? (invKw[fab] ?? 0) : (invCount[fab] ?? 0);
-        const rmaGlobal = emKW ? sacKw(globalSac[fab]) : sacCount(globalSac[fab]);
-        const rmaCorte = emKW ? sacKw(corteSac[fab]) : sacCount(corteSac[fab]);
+        const c = cohortData[fab] ?? { linked: 0, inv: 0 };
+        const globalRma = emKW ? (globalRmaByFab.kw[fab] ?? 0) : (globalRmaByFab.count[fab] ?? 0);
+        const cohortRma = emKW ? (c.linkedKw ?? 0) : c.linked;
+        const inversores = emKW ? (c.invKw ?? 0) : c.inv;
         return {
           fabricante: fab,
-          vendido,
-          rmaGlobal,
-          rmaCorte,
-          taxaGlobal: vendido > 0 ? (rmaGlobal / vendido) * 100 : 0,
-          taxaCorte: vendido > 0 ? (rmaCorte / vendido) * 100 : 0,
+          globalRma,
+          cohortRma,
+          inversores,
+          taxaGlobal: inversores > 0 ? (globalRma / inversores) * 100 : 0,
+          taxaCoorte: inversores > 0 ? (cohortRma / inversores) * 100 : 0,
         };
       })
-      .sort((a, b) => b.vendido - a.vendido);
-  }, [selectedFabs, rmaData, vendasData, cohortBase, powerMap, emKW]);
+      .sort((a, b) => b.inversores - a.inversores);
+  }, [selectedFabs, globalRmaByFab, cohortData, emKW]);
 
   if (selectedFabs.length === 0) return null;
-
-  const fmt = (v: number) => (emKW ? formataValor(v, unidade) : v.toLocaleString("pt-BR"));
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 border-l-4 border-l-indigo-400 shadow-card mb-5 overflow-hidden">
       <div className="px-4 pt-3 pb-2 border-b border-slate-100">
         <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">
           Taxas por Fabricante Selecionado
+          {unidade === "kw" && !kwDisponivel && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
         </p>
       </div>
 
@@ -131,11 +143,15 @@ export function FabricanteBreakdown() {
                 <td className="px-4 py-1 font-medium text-slate-700 truncate max-w-[200px]" title={r.fabricante}>
                   {r.fabricante}
                 </td>
-                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaGlobal)}`}>{r.taxaGlobal.toFixed(2)}%</td>
-                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaCorte)}`}>{r.taxaCorte.toFixed(2)}%</td>
-                <td className="px-4 py-1 text-right text-slate-400">{fmt(r.vendido)}</td>
-                <td className="px-4 py-1 text-right text-slate-400">{fmt(r.rmaGlobal)}</td>
-                <td className="px-4 py-1 text-right text-slate-400">{fmt(r.rmaCorte)}</td>
+                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaGlobal)}`}>
+                  {loading && !cohortData[r.fabricante] ? "…" : `${r.taxaGlobal.toFixed(2)}%`}
+                </td>
+                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaCoorte)}`}>
+                  {loading && !cohortData[r.fabricante] ? "…" : `${r.taxaCoorte.toFixed(2)}%`}
+                </td>
+                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.inversores, unidade) : r.inversores.toLocaleString("pt-BR")}</td>
+                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.globalRma, unidade) : r.globalRma.toLocaleString("pt-BR")}</td>
+                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.cohortRma, unidade) : r.cohortRma.toLocaleString("pt-BR")}</td>
               </tr>
             ))}
           </tbody>

@@ -48,21 +48,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ map });
     }
 
-    if (type === "cohort-base") {
-      // Base para cálculo de coorte client-side: todos os RMAs (qualquer data)
-      // com colunas mínimas. Usado pela tabela por fabricante para computar
-      // RMAs vinculados (count + kW) sem depender de função SQL.
-      const { data, error } = await supabase
-        .from("rma")
-        .select("id, nro_fotus, sac, potencia, fabricante, produto")
-        .limit(200000);
-      if (error) {
-        console.error("[analytics/cohort-base] Erro:", error);
-        return NextResponse.json({ rows: [] });
-      }
-      return NextResponse.json({ rows: data ?? [] });
-    }
-
     if (type === "active-products") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc("get_produtos_ativos", {
