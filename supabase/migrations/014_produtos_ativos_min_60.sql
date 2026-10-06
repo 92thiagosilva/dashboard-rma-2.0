@@ -1,13 +1,7 @@
--- Filtro "Apenas produtos ativos"
--- Regra: produto é ATIVO se teve SUM(quantidade_vendida) > 60 nos 6 meses
--- anteriores à data final filtrada (ou hoje, se não houver data final).
--- Produtos inativos são excluídos de todos os cálculos da dashboard.
-
--- 1) Retorna os nomes de produto ATIVOS (normalizados UPPER/TRIM) para o
---    filtro client-side no store (rmaData / vendasData).
-CREATE OR REPLACE FUNCTION get_produtos_ativos(
-  p_date_end date DEFAULT NULL
-)
+-- Migration 014: aumenta o limite de produtos ativos para 60 vendas.
+-- Atualiza também a função de coorte para manter o mesmo critério no servidor.
+-- Atualiza o limite de produtos ativos de 10 para 60 vendas nos últimos 6 meses.
+CREATE OR REPLACE FUNCTION get_produtos_ativos(p_date_end date DEFAULT NULL)
 RETURNS TABLE(descricao_produto text) AS $$
 DECLARE
   v_end date := COALESCE(p_date_end, CURRENT_DATE);
@@ -22,11 +16,19 @@ BEGIN
   HAVING SUM(v.quantidade_vendida) > 60;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+-- Migration 013: APENAS a função de coorte com kW (sem índices).
+-- Use esta se a 011 não pegou. Os índices já vêm da 009.
+-- Rode TUDO de uma vez (Ctrl+A > Run).
 
+CREATE OR REPLACE FUNCTION norm_kw(p numeric)
+RETURNS numeric AS $$
+  SELECT CASE
+    WHEN p IS NULL OR p <= 0 THEN 0
+    WHEN p > 1000 THEN p / 1000.0
+    ELSE p
+  END;
+$$ LANGUAGE sql IMMUTABLE;
 
--- 2) Cohort v3: adiciona parâmetro p_apenas_ativos. Quando true, aplica a mesma
---    regra de 6 meses (via p_date_end) às vendas e RMAs contabilizados.
---    Também unifica a lógica de fabricante/modelo (remove o IF/ELSE anterior).
 CREATE OR REPLACE FUNCTION rma_taxa_por_coorte_venda(
   p_date_start    date    DEFAULT NULL,
   p_date_end      date    DEFAULT NULL,
@@ -36,17 +38,18 @@ CREATE OR REPLACE FUNCTION rma_taxa_por_coorte_venda(
 )
 RETURNS json AS $$
 DECLARE
-  v_linked_rma bigint  := 0;
-  v_total_inv  bigint  := 0;
-  v_has_filter boolean;
-  v_ativos     text[];
+  v_linked_rma     bigint  := 0;
+  v_total_inv      bigint  := 0;
+  v_linked_rma_kw  numeric := 0;
+  v_total_inv_kw   numeric := 0;
+  v_has_filter     boolean;
+  v_ativos         text[];
 BEGIN
   v_has_filter := (
     (p_fabricantes IS NOT NULL AND array_length(p_fabricantes, 1) > 0)
     OR (p_modelos IS NOT NULL AND array_length(p_modelos, 1) > 0)
   );
 
-  -- Conjunto de produtos ativos (6 meses antes de p_date_end)
   IF p_apenas_ativos THEN
     SELECT array_agg(t.p) INTO v_ativos
     FROM (
@@ -61,7 +64,6 @@ BEGIN
     IF v_ativos IS NULL THEN v_ativos := ARRAY[]::text[]; END IF;
   END IF;
 
-  -- Total de inversores vendidos no período (com filtros aplicados)
   SELECT COALESCE(SUM(v.quantidade_vendida), 0)
   INTO v_total_inv
   FROM vendas v
@@ -79,7 +81,30 @@ BEGIN
       )
     );
 
-  -- RMAs vinculados às vendas do período (RMA de qualquer data)
+  SELECT COALESCE(SUM(v.quantidade_vendida * norm_kw(pot.kw)), 0)
+  INTO v_total_inv_kw
+  FROM vendas v
+  JOIN (
+    SELECT UPPER(TRIM(produto)) AS p,
+           mode() WITHIN GROUP (ORDER BY potencia) AS kw
+    FROM rma
+    WHERE produto IS NOT NULL AND potencia IS NOT NULL
+    GROUP BY UPPER(TRIM(produto))
+  ) pot ON pot.p = UPPER(TRIM(v.descricao_produto))
+  WHERE (p_date_start IS NULL OR v.data_venda >= p_date_start)
+    AND (p_date_end   IS NULL OR v.data_venda <= p_date_end)
+    AND (NOT p_apenas_ativos OR UPPER(TRIM(v.descricao_produto)) = ANY(v_ativos))
+    AND (
+      NOT v_has_filter
+      OR UPPER(TRIM(v.descricao_produto)) IN (
+        SELECT DISTINCT UPPER(TRIM(r.produto))
+        FROM rma r
+        WHERE r.produto IS NOT NULL
+          AND (p_fabricantes IS NULL OR array_length(p_fabricantes, 1) = 0 OR r.fabricante = ANY(p_fabricantes))
+          AND (p_modelos     IS NULL OR array_length(p_modelos,     1) = 0 OR r.produto    = ANY(p_modelos))
+      )
+    );
+
   SELECT COUNT(DISTINCT COALESCE(r.sac, r.id::text))
   INTO v_linked_rma
   FROM rma r
@@ -96,9 +121,31 @@ BEGIN
         AND (NOT p_apenas_ativos OR UPPER(TRIM(v.descricao_produto)) = ANY(v_ativos))
     );
 
+  SELECT COALESCE(SUM(sac_kw), 0)
+  INTO v_linked_rma_kw
+  FROM (
+    SELECT norm_kw(MAX(r.potencia)) AS sac_kw
+    FROM rma r
+    WHERE r.nro_fotus IS NOT NULL
+      AND (NOT p_apenas_ativos OR UPPER(TRIM(r.produto)) = ANY(v_ativos))
+      AND (p_fabricantes IS NULL OR array_length(p_fabricantes, 1) = 0 OR r.fabricante = ANY(p_fabricantes))
+      AND (p_modelos     IS NULL OR array_length(p_modelos,     1) = 0 OR r.produto    = ANY(p_modelos))
+      AND r.nro_fotus IN (
+        SELECT v.numero_fotus
+        FROM vendas v
+        WHERE v.numero_fotus IS NOT NULL
+          AND (p_date_start IS NULL OR v.data_venda >= p_date_start)
+          AND (p_date_end   IS NULL OR v.data_venda <= p_date_end)
+          AND (NOT p_apenas_ativos OR UPPER(TRIM(v.descricao_produto)) = ANY(v_ativos))
+      )
+    GROUP BY COALESCE(r.sac, r.id::text)
+  ) t;
+
   RETURN json_build_object(
-    'linked_rma_count', v_linked_rma,
-    'total_inversores', v_total_inv
+    'linked_rma_count',    v_linked_rma,
+    'total_inversores',    v_total_inv,
+    'linked_rma_kw',       ROUND(v_linked_rma_kw, 2),
+    'total_inversores_kw', ROUND(v_total_inv_kw, 2)
   );
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;

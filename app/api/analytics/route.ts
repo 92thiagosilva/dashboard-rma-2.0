@@ -6,7 +6,6 @@ export async function GET(req: NextRequest) {
   const type = searchParams.get("type");
   const dateStart = searchParams.get("dateStart");
   const dateEnd = searchParams.get("dateEnd");
-  const stockStatus = searchParams.get("stockStatus") ?? "Todos";
   const fabricantes = searchParams.get("fabricantes")?.split(",").filter(Boolean) ?? [];
   const modelos = searchParams.get("modelos")?.split(",").filter(Boolean) ?? [];
   const classificacoes = searchParams.get("classificacoes")?.split(",").filter(Boolean) ?? [];
@@ -144,7 +143,6 @@ export async function GET(req: NextRequest) {
     let rmaQuery = supabase.from("rma").select("*").limit(20000);
     if (dateStart) rmaQuery = rmaQuery.gte("data_criacao", dateStart);
     if (dateEnd) rmaQuery = rmaQuery.lte("data_criacao", dateEnd);
-    if (stockStatus !== "Todos") rmaQuery = rmaQuery.eq("ativo", stockStatus);
     if (fabricantes.length > 0) rmaQuery = rmaQuery.in("fabricante", fabricantes);
     if (modelos.length > 0) rmaQuery = rmaQuery.in("produto", modelos);
     if (classificacoes.length > 0) rmaQuery = rmaQuery.in("classificacao", classificacoes);

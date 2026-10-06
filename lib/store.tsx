@@ -93,7 +93,6 @@ const DashboardContext = createContext<DashboardStore | null>(null);
 const DEFAULT_FILTERS: FilterState = {
   dateStart: "",
   dateEnd: "",
-  stockStatus: "Todos",
   fabricantes: [],
   modelos: [],
   classificacoes: [],
@@ -163,7 +162,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       const params = new URLSearchParams();
       if (f.dateStart) params.set("dateStart", f.dateStart);
       if (f.dateEnd) params.set("dateEnd", f.dateEnd);
-      if (f.stockStatus !== "Todos") params.set("stockStatus", f.stockStatus);
       if (fabTrulyFiltered) params.set("fabricantes", f.fabricantes.join(","));
       if (modTrulyFiltered) params.set("modelos", f.modelos.join(","));
       // Classificação NÃO é enviada ao servidor — é calculada client-side
@@ -192,7 +190,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       // Salva no cache apenas quando não há filtros ativos (dados "completos")
       const noFilters =
         !f.dateStart && !f.dateEnd &&
-        f.stockStatus === "Todos" &&
         f.fabricantes.length === 0 &&
         f.modelos.length === 0 &&
         f.classificacoes.length === 0;

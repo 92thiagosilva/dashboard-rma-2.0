@@ -228,7 +228,7 @@ export function Sidebar() {
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-200">Apenas produtos ativos</p>
                   <p className="text-[10px] text-slate-500 leading-snug mt-0.5">
-                    Ignora produtos com ≤ 10 vendas nos 6 meses anteriores à data final
+                    Ignora produtos com ≤ 60 vendas nos 6 meses anteriores à data final
                   </p>
                 </div>
                 <button
@@ -247,32 +247,6 @@ export function Sidebar() {
                 </button>
               </div>
             </div>
-
-            {/* Stock status */}
-            <FilterSection title="Status (Ativo)">
-              <div className="space-y-1">
-                {(["Todos", "Sim", "Não"] as const).map((v) => (
-                  <label key={v} className="flex items-center gap-2 cursor-pointer group">
-                    <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                      filters.stockStatus === v ? "border-blue-500" : "border-slate-600 group-hover:border-blue-400"
-                    }`}>
-                      {filters.stockStatus === v && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                    </div>
-                    <span className="text-xs text-slate-300 group-hover:text-white transition-colors">
-                      {v === "Sim" ? "Em estoque" : v === "Não" ? "Fora de estoque" : v}
-                    </span>
-                    <input
-                      type="radio"
-                      name="stockStatus"
-                      value={v}
-                      checked={filters.stockStatus === v}
-                      onChange={() => setFilters({ stockStatus: v })}
-                      className="hidden"
-                    />
-                  </label>
-                ))}
-              </div>
-            </FilterSection>
 
             {/* Fabricante */}
             {filterOptions.fabricantes.length > 0 && (

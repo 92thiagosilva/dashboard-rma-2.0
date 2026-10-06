@@ -27,11 +27,10 @@ export function calcularClassificacao(
 export interface FilterState {
   dateStart: string;
   dateEnd: string;
-  stockStatus: "Todos" | "Sim" | "Não";
   fabricantes: string[];
   modelos: string[];
   classificacoes: string[];
-  // Quando true, exclui produtos "inativos" (≤10 vendidos nos 6 meses
+  // Quando true, exclui produtos "inativos" (≤60 vendidos nos 6 meses
   // anteriores à data final filtrada) de todos os cálculos.
   apenasAtivos: boolean;
 }
@@ -39,7 +38,6 @@ export interface FilterState {
 export const DEFAULT_FILTERS: FilterState = {
   dateStart: "",
   dateEnd: "",
-  stockStatus: "Todos",
   fabricantes: [],
   modelos: [],
   classificacoes: [],
