@@ -210,6 +210,14 @@ export function FabricanteBreakdown() {
       return next;
     });
 
+  // Refaz a consulta de um nó que falhou: ao tirá-lo do cache, o efeito de fila o enfileira de novo.
+  const retry = (key: string) =>
+    setCohort((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+
   if (selectedFabs.length === 0) return null;
 
   const emKW = unidade === "kw";
@@ -253,8 +261,9 @@ export function FabricanteBreakdown() {
               return (
                 <tr
                   key={n.key}
-                  className={`border-t border-slate-50 ${hasChildren ? "cursor-pointer hover:bg-slate-50/60" : ""} ${n.level > 0 ? "bg-slate-50/30" : ""} transition-colors`}
-                  onClick={hasChildren ? () => toggle(n.key) : undefined}
+                  className={`border-t border-slate-50 ${hasChildren || c?.failed ? "cursor-pointer hover:bg-slate-50/60" : ""} ${n.level > 0 ? "bg-slate-50/30" : ""} transition-colors`}
+                  title={c?.failed ? "Falhou ao carregar — clique para tentar de novo" : undefined}
+                  onClick={c?.failed ? () => retry(n.key) : hasChildren ? () => toggle(n.key) : undefined}
                 >
                   <td className={`py-1 ${levelPad[n.level]} pr-4 truncate max-w-[280px] ${nameColor}`} title={n.label}>
                     <span className="inline-flex items-center gap-1">
