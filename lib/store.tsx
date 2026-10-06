@@ -41,9 +41,19 @@ export interface FilterOptions {
   classificacoes: string[];
 }
 
+export interface CohortBaseRow {
+  id: string;
+  nro_fotus: string | null;
+  sac: string | null;
+  potencia: number | null;
+  fabricante: string | null;
+  produto: string | null;
+}
+
 interface DashboardStore {
   rmaData: RMARow[];
   vendasData: VendasRow[];
+  cohortBase: CohortBaseRow[];
   filterOptions: FilterOptions;
   filters: FilterState;
   crossFilter: { type: string | null; value: string | null };
@@ -140,6 +150,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   // Visualização em inversores (quantidade) ou kW (potência)
   const [unidade, setUnidadeState] = useState<Unidade>(() => cacheGet<Unidade>("unidade") ?? "inversores");
   const [powerMap, setPowerMap] = useState<Record<string, number>>(() => cacheGet<Record<string, number>>("powerMap") ?? {});
+  const [cohortBase, setCohortBase] = useState<CohortBaseRow[]>(() => cacheGet<CohortBaseRow[]>("cohortBase") ?? []);
 
   const abortRef = useRef<AbortController | null>(null);
   const initializedRef = useRef(false);
@@ -309,6 +320,25 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
+  // Busca a base de coorte (todos os RMAs, colunas mínimas) uma vez na montagem
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/analytics?type=cohort-base");
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const rows = (data.rows ?? []) as CohortBaseRow[];
+        setCohortBase(rows);
+        cacheSet("cohortBase", rows);
+      } catch {
+        // ignora
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const setUnidade = useCallback((u: Unidade) => {
     setUnidadeState(u);
     cacheSet("unidade", u);
@@ -360,6 +390,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       value={{
         rmaData: rmaDataView,
         vendasData: vendasDataView,
+        cohortBase,
         filterOptions,
         filters,
         crossFilter,
