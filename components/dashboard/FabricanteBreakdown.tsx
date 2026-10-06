@@ -1,159 +1,205 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDashboard } from "@/lib/store";
-import { criaResolverPotencia, normalizaKW, formataValor } from "@/lib/units";
+import { CaretRight, CaretDown } from "@phosphor-icons/react";
 
-interface CohortByFab {
-  linked: number;
-  inv: number;
-  linkedKw?: number;
-  invKw?: number;
-}
-
-interface FabRow {
+interface TreeNode {
+  key: string;
+  label: string;
+  level: number;        // 0 = fabricante, 1 = tipo alimentação, 2 = classificação
   fabricante: string;
-  globalRma: number;
-  cohortRma: number;
-  inversores: number;
-  taxaGlobal: number;
-  taxaCoorte: number;
+  produtos: string[];   // produtos (rma.produto) do grupo — enviados ao cohort como modelos
+  rmaGlobal: number;    // RMAs do período (SAC único) deste grupo — a partir do rmaData
+  children: TreeNode[];
 }
+
+interface Cohort { inv: number; linked: number }
 
 function taxaColor(t: number) {
   return t > 5 ? "text-red-500" : t > 2 ? "text-amber-500" : "text-emerald-500";
 }
 
 export function FabricanteBreakdown() {
-  const { rmaData, filters, unidade, powerMap } = useDashboard();
-  const [cohortData, setCohortData] = useState<Record<string, CohortByFab>>({});
-  const [loading, setLoading] = useState(false);
-
+  const { rmaData, filters, unidade } = useDashboard();
   const selectedFabs = filters.fabricantes;
   const selectedKey = selectedFabs.join(",");
 
-  // Taxa Global: RMAs do período (SAC único) por fabricante — a partir do rmaData
-  // já filtrado. Calcula contagem e kW (soma da potência, 1 valor por SAC).
-  const globalRmaByFab = useMemo(() => {
-    const resolver = criaResolverPotencia(powerMap);
-    const rmaKW = (r: typeof rmaData[number]) => normalizaKW(r.potencia) ?? resolver(r.produto) ?? 0;
-    const rows: Record<string, Map<string, typeof rmaData[number]>> = {};
-    for (const r of rmaData) {
-      if (!r.fabricante) continue;
-      const m = (rows[r.fabricante] ??= new Map());
-      const k = r.sac ?? `__id_${r.id}`;
-      if (!m.has(k)) m.set(k, r);
-    }
-    const count: Record<string, number> = {};
-    const kw: Record<string, number> = {};
-    for (const fab in rows) {
-      count[fab] = rows[fab].size;
-      let sum = 0;
-      for (const r of rows[fab].values()) sum += rmaKW(r);
-      kw[fab] = sum;
-    }
-    return { count, kw };
-  }, [rmaData, powerMap]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [cohort, setCohort] = useState<Record<string, Cohort>>({});
+  const fetchingRef = useRef<Set<string>>(new Set());
 
-  // Taxa por Coorte + inversores no período: via RPC cohort, uma chamada por
-  // fabricante selecionado (reaproveita a função existente no banco).
-  useEffect(() => {
-    if (selectedFabs.length === 0) {
-      setCohortData({});
-      return;
+  // Árvore de grupos a partir do rmaData (fabricante -> tipo -> classificação)
+  const forest = useMemo(() => {
+    type Agg = { sac: Set<string>; prod: Set<string> };
+    const mk = (): Agg => ({ sac: new Set(), prod: new Set() });
+    const fabs = new Map<string, Agg & { tipos: Map<string, Agg & { classes: Map<string, Agg> }> }>();
+
+    for (const r of rmaData) {
+      const fab = r.fabricante;
+      if (!fab || !selectedFabs.includes(fab)) continue;
+      const tipo = r.tipo_alimentacao?.trim() || "Não informado";
+      const classif = r.classificacao || "Não classificado";
+      const sacKey = r.sac ?? `__id_${r.id}`;
+      const prod = r.produto?.trim();
+
+      let f = fabs.get(fab);
+      if (!f) { f = { ...mk(), tipos: new Map() }; fabs.set(fab, f); }
+      f.sac.add(sacKey); if (prod) f.prod.add(prod);
+
+      let t = f.tipos.get(tipo);
+      if (!t) { t = { ...mk(), classes: new Map() }; f.tipos.set(tipo, t); }
+      t.sac.add(sacKey); if (prod) t.prod.add(prod);
+
+      let c = t.classes.get(classif);
+      if (!c) { c = mk(); t.classes.set(classif, c); }
+      c.sac.add(sacKey); if (prod) c.prod.add(prod);
     }
+
+    return selectedFabs
+      .filter((fab) => fabs.has(fab))
+      .map((fab) => {
+        const f = fabs.get(fab)!;
+        const tipos = [...f.tipos.entries()]
+          .sort((a, b) => b[1].sac.size - a[1].sac.size)
+          .map(([tipo, t]) => {
+            const classes = [...t.classes.entries()]
+              .sort((a, b) => b[1].sac.size - a[1].sac.size)
+              .map(([classif, c]): TreeNode => ({
+                key: `F:${fab}|T:${tipo}|C:${classif}`,
+                label: classif, level: 2, fabricante: fab,
+                produtos: [...c.prod], rmaGlobal: c.sac.size, children: [],
+              }));
+            return {
+              key: `F:${fab}|T:${tipo}`, label: tipo, level: 1, fabricante: fab,
+              produtos: [...t.prod], rmaGlobal: t.sac.size, children: classes,
+            } as TreeNode;
+          });
+        return {
+          key: `F:${fab}`, label: fab, level: 0, fabricante: fab,
+          produtos: [...f.prod], rmaGlobal: f.sac.size, children: tipos,
+        } as TreeNode;
+      });
+  }, [rmaData, selectedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Invalida cache quando filtros mudam
+  const fsig = `${filters.dateStart}|${filters.dateEnd}|${filters.apenasAtivos}|${selectedKey}`;
+  useEffect(() => {
+    setCohort({});
+    setExpanded(new Set());
+    fetchingRef.current = new Set();
+  }, [fsig]);
+
+  // Nós visíveis (topo + filhos de nós expandidos)
+  const visible = useMemo(() => {
+    const out: TreeNode[] = [];
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        out.push(n);
+        if (expanded.has(n.key) && n.children.length) walk(n.children);
+      }
+    };
+    walk(forest);
+    return out;
+  }, [forest, expanded]);
+
+  // Busca cohort (vendido + corte) para os nós visíveis ainda não carregados
+  useEffect(() => {
+    const toFetch = visible.filter((n) => !(n.key in cohort) && !fetchingRef.current.has(n.key));
+    if (toFetch.length === 0) return;
+    toFetch.forEach((n) => fetchingRef.current.add(n.key));
     let cancelled = false;
-    setLoading(true);
     (async () => {
-      const entries = await Promise.all(
-        selectedFabs.map(async (fab): Promise<[string, CohortByFab]> => {
+      const results = await Promise.all(
+        toFetch.map(async (n): Promise<[string, Cohort]> => {
           try {
-            const params = new URLSearchParams({ type: "cohort", fabricantes: fab });
+            const params = new URLSearchParams({ type: "cohort", fabricantes: n.fabricante });
             if (filters.dateStart) params.set("dateStart", filters.dateStart);
             if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
             if (filters.apenasAtivos) params.set("apenasAtivos", "1");
-            const res = await fetch(`/api/analytics?${params}`);
-            if (!res.ok) return [fab, { linked: 0, inv: 0 }];
-            const d = await res.json();
-            return [fab, { linked: d.linkedRMACount ?? 0, inv: d.totalInversores ?? 0, linkedKw: d.linkedRMAKw, invKw: d.totalInversoresKw }];
+            if (n.level > 0 && n.produtos.length) params.set("modelos", n.produtos.join(","));
+            const r = await fetch(`/api/analytics?${params}`);
+            if (!r.ok) return [n.key, { inv: 0, linked: 0 }];
+            const d = await r.json();
+            return [n.key, { inv: d.totalInversores ?? 0, linked: d.linkedRMACount ?? 0 }];
           } catch {
-            return [fab, { linked: 0, inv: 0 }];
+            return [n.key, { inv: 0, linked: 0 }];
           }
         })
       );
       if (cancelled) return;
-      setCohortData(Object.fromEntries(entries));
-      setLoading(false);
+      setCohort((prev) => ({ ...prev, ...Object.fromEntries(results) }));
     })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, filters.dateStart, filters.dateEnd, filters.apenasAtivos]);
+    return () => { cancelled = true; };
+  }, [visible, cohort, filters.dateStart, filters.dateEnd, filters.apenasAtivos]);
 
-  // Só exibe em kW quando a migration 008 já forneceu os campos kW
-  const kwDisponivel = Object.values(cohortData).some((c) => c.invKw != null);
-  const emKW = unidade === "kw" && kwDisponivel;
-
-  const rows: FabRow[] = useMemo(() => {
-    return selectedFabs
-      .map((fab) => {
-        const c = cohortData[fab] ?? { linked: 0, inv: 0 };
-        const globalRma = emKW ? (globalRmaByFab.kw[fab] ?? 0) : (globalRmaByFab.count[fab] ?? 0);
-        const cohortRma = emKW ? (c.linkedKw ?? 0) : c.linked;
-        const inversores = emKW ? (c.invKw ?? 0) : c.inv;
-        return {
-          fabricante: fab,
-          globalRma,
-          cohortRma,
-          inversores,
-          taxaGlobal: inversores > 0 ? (globalRma / inversores) * 100 : 0,
-          taxaCoorte: inversores > 0 ? (cohortRma / inversores) * 100 : 0,
-        };
-      })
-      .sort((a, b) => b.inversores - a.inversores);
-  }, [selectedFabs, globalRmaByFab, cohortData, emKW]);
+  const toggle = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
 
   if (selectedFabs.length === 0) return null;
+
+  const levelPad = ["pl-4", "pl-9", "pl-14"];
 
   return (
     <div className="bg-white rounded-xl border border-slate-100 border-l-4 border-l-indigo-400 shadow-card mb-5 overflow-hidden">
       <div className="px-4 pt-3 pb-2 border-b border-slate-100">
         <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">
           Taxas por Fabricante Selecionado
-          {unidade === "kw" && !kwDisponivel && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
+          {unidade === "kw" && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
         </p>
+        <p className="text-[10px] text-slate-400 mt-0.5">Clique para expandir: Fabricante → Tipo de Alimentação → Classificação</p>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
             <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="text-left font-bold px-4 py-1.5">Fabricante</th>
+              <th className="text-left font-bold px-4 py-1.5">Grupo</th>
               <th className="text-right font-bold px-4 py-1.5">Taxa Global</th>
               <th className="text-right font-bold px-4 py-1.5">Taxa Corte</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW Vendido" : "Qtd. Vendido"}</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Global)" : "Qtd. RMA (Global)"}</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Corte)" : "Qtd. RMA (Corte)"}</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">Qtd. Vendido</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">Qtd. RMA (Global)</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">Qtd. RMA (Corte)</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.fabricante} className="border-t border-slate-50 hover:bg-slate-50/60 transition-colors">
-                <td className="px-4 py-1 font-medium text-slate-700 truncate max-w-[200px]" title={r.fabricante}>
-                  {r.fabricante}
-                </td>
-                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaGlobal)}`}>
-                  {loading && !cohortData[r.fabricante] ? "…" : `${r.taxaGlobal.toFixed(2)}%`}
-                </td>
-                <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaCoorte)}`}>
-                  {loading && !cohortData[r.fabricante] ? "…" : `${r.taxaCoorte.toFixed(2)}%`}
-                </td>
-                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.inversores, unidade) : r.inversores.toLocaleString("pt-BR")}</td>
-                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.globalRma, unidade) : r.globalRma.toLocaleString("pt-BR")}</td>
-                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.cohortRma, unidade) : r.cohortRma.toLocaleString("pt-BR")}</td>
-              </tr>
-            ))}
+            {visible.map((n) => {
+              const c = cohort[n.key];
+              const hasChildren = n.children.length > 0;
+              const isOpen = expanded.has(n.key);
+              const taxaGlobal = c && c.inv > 0 ? (n.rmaGlobal / c.inv) * 100 : 0;
+              const taxaCorte = c && c.inv > 0 ? (c.linked / c.inv) * 100 : 0;
+              const nameColor = n.level === 0 ? "text-slate-700 font-semibold" : n.level === 1 ? "text-slate-600" : "text-slate-500";
+              return (
+                <tr
+                  key={n.key}
+                  className={`border-t border-slate-50 ${hasChildren ? "cursor-pointer hover:bg-slate-50/60" : ""} ${n.level > 0 ? "bg-slate-50/30" : ""} transition-colors`}
+                  onClick={hasChildren ? () => toggle(n.key) : undefined}
+                >
+                  <td className={`py-1 ${levelPad[n.level]} pr-4 truncate max-w-[280px] ${nameColor}`} title={n.label}>
+                    <span className="inline-flex items-center gap-1">
+                      {hasChildren
+                        ? (isOpen ? <CaretDown size={10} weight="bold" className="text-slate-400 shrink-0" /> : <CaretRight size={10} weight="bold" className="text-slate-400 shrink-0" />)
+                        : <span className="w-[10px] shrink-0" />}
+                      {n.label}
+                    </span>
+                  </td>
+                  <td className={`px-4 py-1 text-right font-bold ${c ? taxaColor(taxaGlobal) : "text-slate-300"}`}>
+                    {c ? `${taxaGlobal.toFixed(2)}%` : "…"}
+                  </td>
+                  <td className={`px-4 py-1 text-right font-bold ${c ? taxaColor(taxaCorte) : "text-slate-300"}`}>
+                    {c ? `${taxaCorte.toFixed(2)}%` : "…"}
+                  </td>
+                  <td className="px-4 py-1 text-right text-slate-400">{c ? c.inv.toLocaleString("pt-BR") : "…"}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{n.rmaGlobal.toLocaleString("pt-BR")}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{c ? c.linked.toLocaleString("pt-BR") : "…"}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
