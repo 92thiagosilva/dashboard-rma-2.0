@@ -159,11 +159,10 @@ export function KPIGrid() {
   return (
     <div className="grid grid-cols-3 gap-4 mb-5">
       <KPICard
-        label="Pedidos (NFs únicas)"
-        value={kpis.totalVendas.toLocaleString("pt-BR")}
-        sub={emKW
-          ? `${formataValor(kpis.vendasValor, unidade)} vendidos`
-          : `${kpis.totalInversores.toLocaleString("pt-BR")} inversores vendidos`}
+        label={emKW ? "Potência Vendida" : "Inversores Vendidos"}
+        value={emKW
+          ? formataValor(kpis.vendasValor, unidade)
+          : kpis.totalInversores.toLocaleString("pt-BR")}
         accent="blue"
         loading={loading}
       />
