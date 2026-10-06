@@ -120,7 +120,7 @@ export function InsightsGrid() {
     const confiabilidade = calcularConfiabilidadeInsights(rmaData);
 
     return { topVolume, topTaxa, topDefeito, topEstado, solar, confiabilidade };
-  }, [rmaData, vendasData]);
+  }, [rmaData, vendasData, unidade, powerMap]);
 
   return (
     <div className="mb-5 space-y-3">
