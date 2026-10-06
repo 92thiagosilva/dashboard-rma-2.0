@@ -70,7 +70,7 @@ export function formataValor(valor: number, unidade: Unidade): string {
   if (unidade === "inversores") return Math.round(valor).toLocaleString("pt-BR");
   // kW: acima de 1000 exibe em MW para legibilidade
   if (valor >= 1000) {
-    return `${(valor / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MW`;
+    return `${(valor / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} MW`;
   }
   return `${valor.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kW`;
 }
