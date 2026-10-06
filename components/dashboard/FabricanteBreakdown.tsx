@@ -131,10 +131,10 @@ export function FabricanteBreakdown() {
             <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
               <th className="text-left font-bold px-4 py-1.5">Fabricante</th>
               <th className="text-right font-bold px-4 py-1.5">Taxa Global</th>
-              <th className="text-right font-bold px-4 py-1.5">Taxa Coorte</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW per." : "RMA per."}</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW vinc." : "RMA vinc."}</th>
-              <th className="text-right font-bold px-4 py-1.5">{emKW ? "kW período" : "Inversores"}</th>
+              <th className="text-right font-bold px-4 py-1.5">Taxa Corte</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW Vendido" : "Qtd. Vendido"}</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Global)" : "Qtd. RMA (Global)"}</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Corte)" : "Qtd. RMA (Corte)"}</th>
             </tr>
           </thead>
           <tbody>
@@ -149,9 +149,9 @@ export function FabricanteBreakdown() {
                 <td className={`px-4 py-1 text-right font-bold ${taxaColor(r.taxaCoorte)}`}>
                   {loading && !cohortData[r.fabricante] ? "…" : `${r.taxaCoorte.toFixed(2)}%`}
                 </td>
+                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.inversores, unidade) : r.inversores.toLocaleString("pt-BR")}</td>
                 <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.globalRma, unidade) : r.globalRma.toLocaleString("pt-BR")}</td>
                 <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.cohortRma, unidade) : r.cohortRma.toLocaleString("pt-BR")}</td>
-                <td className="px-4 py-1 text-right text-slate-400">{emKW ? formataValor(r.inversores, unidade) : r.inversores.toLocaleString("pt-BR")}</td>
               </tr>
             ))}
           </tbody>
