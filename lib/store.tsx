@@ -220,15 +220,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       // Vendas truncadas no limite de 120k linhas: busca a série mensal agregada no servidor
       // para a linha do tempo não perder meses. Se falhar, a linha do tempo usa os dados do cliente.
       if ((data.vendas ?? []).length >= 120000) {
-        try {
-          const mp = new URLSearchParams(params);
-          mp.set("type", "vendas-mensal");
-          const mres = await fetch(`/api/analytics?${mp}`, { signal });
-          const m = mres.ok ? await mres.json() : null;
-          if (!signal.aborted) setVendasMensal(Array.isArray(m?.rows) ? m.rows : null);
-        } catch {
-          if (!signal.aborted) setVendasMensal(null);
-        }
+        // Em segundo plano: não segura o loading da tela; até chegar, vale a série do cliente.
+        setVendasMensal(null);
+        const mp = new URLSearchParams(params);
+        mp.set("type", "vendas-mensal");
+        fetch(`/api/analytics?${mp}`, { signal })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((m) => { if (!signal.aborted) setVendasMensal(Array.isArray(m?.rows) ? m.rows : null); })
+          .catch(() => { if (!signal.aborted) setVendasMensal(null); });
       } else {
         setVendasMensal(null);
       }
