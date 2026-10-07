@@ -212,7 +212,7 @@ export function InsightDetailModal({ selection, rmaData, vendasData, filters, un
                   accent={detail.taxaGlobal > 5 ? "red" : detail.taxaGlobal > 2 ? "amber" : "green"}
                 />
                 <Stat
-                  label="Taxa por coorte"
+                  label="Taxa por Coorte"
                   value={cohortLoading ? "…" : cohort ? `${cohort.taxa.toFixed(2)}%` : "—"}
                   accent="green"
                   sub={cohort ? `${cohort.linkedRMACount} RMAs / ${cohort.totalInversores.toLocaleString("pt-BR")} inv.` : undefined}

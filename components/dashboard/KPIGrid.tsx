@@ -229,10 +229,11 @@ export function KPIGrid() {
               {emKW && !cohortTemKw && <span className="ml-1.5 text-slate-300 normal-case tracking-normal">(em inversores)</span>}
             </p>
             <p className="text-xs text-slate-400 leading-relaxed">
-              RMAs de qualquer época vinculados às vendas do período via Nro. Fotus —{" "}
+              <span className="font-medium text-slate-500">Coorte</span> = inversores vendidos no período (
               {filters.dateStart || filters.dateEnd
                 ? `${filters.dateStart || "início"} → ${filters.dateEnd || "hoje"}`
                 : "todos os períodos"}
+              ). Conta os RMAs desses inversores, abertos em qualquer data, vinculados pelo Nro. Fotus.
             </p>
           </div>
           <div className="flex items-center gap-8 shrink-0">

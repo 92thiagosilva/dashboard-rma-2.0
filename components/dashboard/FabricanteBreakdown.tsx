@@ -231,6 +231,10 @@ export function FabricanteBreakdown() {
           Taxas por Fabricante Selecionado
         </p>
         <p className="text-[10px] text-slate-400 mt-0.5">Clique para expandir: Fabricante → Tipo de Alimentação → Classificação → Potência → Modelo</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">
+          <span className="font-medium text-slate-500">Global</span>: RMAs abertos no período.{" "}
+          <span className="font-medium text-slate-500">Coorte</span>: RMAs de qualquer data dos inversores vendidos no período (vínculo pelo Nro. Fotus).
+        </p>
       </div>
 
       <div className="overflow-x-auto">
@@ -239,10 +243,10 @@ export function FabricanteBreakdown() {
             <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
               <th className="text-left font-bold px-4 py-1.5">Grupo</th>
               <th className="text-right font-bold px-4 py-1.5">Taxa Global</th>
-              <th className="text-right font-bold px-4 py-1.5">Taxa Corte</th>
+              <th className="text-right font-bold px-4 py-1.5" title="Coorte: RMAs de qualquer data vinculados às vendas do período (Nro. Fotus) ÷ vendido no período">Taxa Coorte</th>
               <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW Vendido" : "Qtd. Vendido"}</th>
               <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Global)" : "Qtd. RMA (Global)"}</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Corte)" : "Qtd. RMA (Corte)"}</th>
+              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Coorte)" : "Qtd. RMA (Coorte)"}</th>
             </tr>
           </thead>
           <tbody>
