@@ -155,6 +155,22 @@ export function KPIGrid() {
     return { totalVendas, totalInversores, totalRMACount, vendasValor, rmaValor, taxa, estados, rmaDia, rmaMes };
   }, [rmaData, vendasData, unidade, powerMap]);
 
+  // A carga principal traz no máximo 120 mil linhas de vendas. Quando chega nesse teto, as
+  // vendas do cliente são só uma amostra arbitrária e os totais saem menores (e variam de
+  // uma carga para outra). Nesse caso o total vem do servidor (o mesmo do card de Coorte,
+  // com os mesmos filtros). Abaixo do teto o cliente é exato e nada muda.
+  const VENDAS_LIMITE = 120000;
+  const vendasTruncadas = vendasData.length >= VENDAS_LIMITE;
+  const cohortOk = !!cohort && !cohortLoading && !(cohort as CohortData & { _rpcError?: string })._rpcError;
+  const usaServidor = vendasTruncadas && cohortOk;
+  const vendidoInv = usaServidor ? cohort!.totalInversores : kpis.totalInversores;
+  const vendidoValor = emKW
+    ? (usaServidor && cohort!.totalInversoresKw != null ? cohort!.totalInversoresKw : kpis.vendasValor)
+    : vendidoInv;
+  const taxaPeriodo = vendidoValor > 0 ? (kpis.rmaValor / vendidoValor) * 100 : 0;
+  // Enquanto o total do servidor carrega (só no caso truncado), evita mostrar a amostra errada
+  const aguardaServidor = vendasTruncadas && cohortLoading;
+
   // Em kW só usamos os valores kW se a migration 008 já tiver sido aplicada (campos presentes)
   const cohortTemKw = cohort?.totalInversoresKw != null;
   const cohortEmKw = emKW && cohortTemKw;
@@ -167,10 +183,10 @@ export function KPIGrid() {
       <KPICard
         label={emKW ? "Potência Vendida" : "Inversores Vendidos"}
         value={emKW
-          ? formataValor(kpis.vendasValor, unidade)
-          : kpis.totalInversores.toLocaleString("pt-BR")}
+          ? formataValor(vendidoValor, unidade)
+          : vendidoInv.toLocaleString("pt-BR")}
         accent="blue"
-        loading={loading}
+        loading={loading || aguardaServidor}
       />
       <KPICard
         label={emKW ? "Total RMAs (kW)" : "Total RMAs (filtrado)"}
@@ -181,12 +197,12 @@ export function KPIGrid() {
       />
       <KPICard
         label="Taxa de Falha (período)"
-        value={`${kpis.taxa.toFixed(2)}%`}
+        value={`${taxaPeriodo.toFixed(2)}%`}
         sub={emKW
-          ? `${formataValor(kpis.rmaValor, unidade)} / ${formataValor(kpis.vendasValor, unidade)}`
-          : `${kpis.totalRMACount} RMAs / ${kpis.totalInversores.toLocaleString("pt-BR")} inversores`}
-        accent={kpis.taxa > 5 ? "red" : kpis.taxa > 2 ? "amber" : "green"}
-        loading={loading}
+          ? `${formataValor(kpis.rmaValor, unidade)} / ${formataValor(vendidoValor, unidade)}`
+          : `${kpis.totalRMACount} RMAs / ${vendidoInv.toLocaleString("pt-BR")} inversores`}
+        accent={taxaPeriodo > 5 ? "red" : taxaPeriodo > 2 ? "amber" : "green"}
+        loading={loading || aguardaServidor}
       />
       <KPICard
         label="Estados Afetados"

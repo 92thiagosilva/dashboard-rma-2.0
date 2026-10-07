@@ -167,9 +167,30 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       // Classificação NÃO é enviada ao servidor — é calculada client-side
       // via calcularClassificacao(tipo_alimentacao, potencia)
 
-      const res = await fetch(`/api/analytics?${params}`, { signal: abortRef.current.signal });
-      if (!res.ok) return;
-      const data = await res.json();
+      // Carga com tentativas: o servidor responde 200 mesmo quando uma das consultas falha
+      // (errors.rma / errors.vendas preenchido e lista vazia). Sem retry, isso virava
+      // "0 vendido" na tela até o próximo reload. Sem nenhum filtro enviado ao servidor,
+      // vendas vazias também é tratado como falha, pois nunca é um resultado legítimo.
+      const signal = abortRef.current.signal;
+      const semFiltroServidor = !f.dateStart && !f.dateEnd && !fabTrulyFiltered && !modTrulyFiltered;
+      const MAX_TENTATIVAS = 3;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any = null;
+      for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
+        if (tentativa > 0) {
+          await new Promise((r) => setTimeout(r, 2000 * tentativa));
+          if (signal.aborted) return;
+        }
+        const res = await fetch(`/api/analytics?${params}`, { signal });
+        if (!res.ok) continue;
+        const d = await res.json();
+        data = d;
+        const falhou =
+          !!d.errors?.rma || !!d.errors?.vendas ||
+          (semFiltroServidor && (d.vendas ?? []).length === 0);
+        if (!falhou) break;
+      }
+      if (!data) return;
 
       // Override classificacao conforme regras Fotus (tipo_alimentacao + potencia)
       const rmaWithClass = (data.rma ?? []).map((r: RMARow) => ({
@@ -193,7 +214,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         f.fabricantes.length === 0 &&
         f.modelos.length === 0 &&
         f.classificacoes.length === 0;
-      if (noFilters) {
+      if (noFilters && !data.errors?.rma && !data.errors?.vendas) {
         cacheSet("rma", rmaWithClass); // cache com classificação já calculada
         cacheSet("vendas", data.vendas ?? []);
       }
