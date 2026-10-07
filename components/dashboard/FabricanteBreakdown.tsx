@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDashboard } from "@/lib/store";
+import { calcularClassificacao } from "@/lib/analytics";
 import { CaretRight, CaretDown } from "@phosphor-icons/react";
 import { normalizaKW, normProd, criaResolverPotencia, formataValor } from "@/lib/units";
 
@@ -23,7 +24,7 @@ function taxaColor(t: number) {
 }
 
 export function FabricanteBreakdown() {
-  const { rmaData, filters, unidade, powerMap } = useDashboard();
+  const { rmaData, treeCatalog, filters, unidade, powerMap } = useDashboard();
   const selectedFabs = filters.fabricantes;
   const selectedKey = selectedFabs.join(",");
 
@@ -52,42 +53,62 @@ export function FabricanteBreakdown() {
     const fabs = new Map<string, FabAgg>();
     const bySac = (a: [string, Agg], b: [string, Agg]) => b[1].sac.size - a[1].sac.size;
 
-    for (const r of rmaData) {
-      const fab = r.fabricante;
-      if (!fab || !selectedFabs.includes(fab)) continue;
-      const tipo = r.tipo_alimentacao?.trim() || "Não informado";
-      const classif = r.classificacao || "Não classificado";
-      const sacKey = r.sac ?? `__id_${r.id}`;
-      const prod = r.produto?.trim();
+    // Cria o caminho fabricante -> tipo -> classificação -> potência -> modelo e, quando há
+    // sacKey, conta o RMA em cada nível. Sem sacKey só cria os nós (produto sem RMA no período).
+    const add = (
+      fab: string, tipoRaw: string | null, classifRaw: string | null, potencia: number | null,
+      prodRaw: string | null, sacKey: string | null,
+    ) => {
+      const tipo = tipoRaw?.trim() || "Não informado";
+      const classif = classifRaw || "Não classificado";
+      const prod = prodRaw?.trim();
       const kw = prod
-        ? (normalizaKW(powerMap[normProd(prod)]) ?? normalizaKW(r.potencia))
-        : normalizaKW(r.potencia);
+        ? (normalizaKW(powerMap[normProd(prod)]) ?? normalizaKW(potencia))
+        : normalizaKW(potencia);
       const potKey = kw != null ? String(kw) : "—";
       const potLabel = kw != null ? `${kw.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kW` : "Sem potência";
-
-      const sacRow: SacRow = { pot: r.potencia, prod: prod ?? null };
+      const sacRow: SacRow = { pot: potencia, prod: prod ?? null };
+      const conta = (a: Agg) => { if (sacKey) a.sac.set(sacKey, sacRow); if (prod) a.prod.add(prod); };
 
       let f = fabs.get(fab);
       if (!f) { f = { ...mk(), tipos: new Map() }; fabs.set(fab, f); }
-      f.sac.set(sacKey, sacRow); if (prod) f.prod.add(prod);
+      conta(f);
 
       let t = f.tipos.get(tipo);
       if (!t) { t = { ...mk(), classes: new Map() }; f.tipos.set(tipo, t); }
-      t.sac.set(sacKey, sacRow); if (prod) t.prod.add(prod);
+      conta(t);
 
       let c = t.classes.get(classif);
       if (!c) { c = { ...mk(), pots: new Map() }; t.classes.set(classif, c); }
-      c.sac.set(sacKey, sacRow); if (prod) c.prod.add(prod);
+      conta(c);
 
       let p = c.pots.get(potKey);
       if (!p) { p = { ...mk(), label: potLabel, modelos: new Map() }; c.pots.set(potKey, p); }
-      p.sac.set(sacKey, sacRow); if (prod) p.prod.add(prod);
+      conta(p);
 
       if (prod) {
         let m = p.modelos.get(prod);
         if (!m) { m = mk(); p.modelos.set(prod, m); }
-        m.sac.set(sacKey, sacRow); m.prod.add(prod);
+        conta(m);
       }
+    };
+
+    // 1) Estrutura: todo produto que já teve RMA em qualquer data. O pai (fabricante) consulta
+    //    as vendas de todos esses produtos; sem isto, com período filtrado, os filhos listariam
+    //    só produtos com RMA no período e não fechariam com o pai.
+    const filtraClass = filters.classificacoes.length > 0 && filters.classificacoes.length < 4;
+    for (const c of treeCatalog) {
+      if (!selectedFabs.includes(c.fabricante)) continue;
+      const classif = calcularClassificacao(c.tipo_alimentacao, c.potencia);
+      if (filtraClass && !filters.classificacoes.includes(classif ?? "")) continue;
+      add(c.fabricante, c.tipo_alimentacao, classif, c.potencia, c.produto, null);
+    }
+
+    // 2) RMAs do período
+    for (const r of rmaData) {
+      const fab = r.fabricante;
+      if (!fab || !selectedFabs.includes(fab)) continue;
+      add(fab, r.tipo_alimentacao, r.classificacao, r.potencia, r.produto, r.sac ?? `__id_${r.id}`);
     }
 
     return selectedFabs.filter((fab) => fabs.has(fab)).map((fab) => {
@@ -122,7 +143,7 @@ export function FabricanteBreakdown() {
         produtos: [...f.prod], rmaGlobal: f.sac.size, rmaGlobalKw: kwOf(f), children: tipos,
       } as TreeNode;
     });
-  }, [rmaData, selectedKey, powerMap]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rmaData, treeCatalog, selectedKey, powerMap, filters.classificacoes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Invalida cache quando filtros mudam
   const fsig = `${filters.dateStart}|${filters.dateEnd}|${filters.apenasAtivos}|${selectedKey}`;

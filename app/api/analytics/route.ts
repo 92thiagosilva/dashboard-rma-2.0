@@ -62,6 +62,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ produtos });
     }
 
+    if (type === "tree-catalog") {
+      // Catálogo de produtos que já tiveram RMA em qualquer data (sem filtro de período).
+      // A árvore por fabricante usa isto para listar também os produtos vendidos no período
+      // cujos RMAs foram abertos fora dele — senão os filhos não fecham com o pai.
+      const { data, error } = await supabase
+        .from("rma")
+        .select("fabricante, produto, tipo_alimentacao, potencia")
+        .not("produto", "is", null)
+        .not("fabricante", "is", null)
+        .limit(20000);
+      if (error) {
+        console.error("[analytics/tree-catalog] Erro:", error);
+        return NextResponse.json({ rows: null, error: error.message });
+      }
+      type Row = { fabricante: string; produto: string; tipo_alimentacao: string | null; potencia: number | null };
+      const seen = new Set<string>();
+      const rows: Row[] = [];
+      for (const r of (data ?? []) as Row[]) {
+        const k = `${r.fabricante}|${r.produto}|${r.tipo_alimentacao ?? ""}|${r.potencia ?? ""}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        rows.push(r);
+      }
+      return NextResponse.json({ rows });
+    }
+
     if (type === "vendas-mensal") {
       // Vendas agregadas por mês e produto (sem o limite de 120k linhas do cliente).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

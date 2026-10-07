@@ -42,6 +42,14 @@ export interface VendasMensalRow {
   qtd: number;
 }
 
+// Produto que já teve RMA em qualquer data (estrutura da árvore por fabricante).
+export interface TreeCatalogRow {
+  fabricante: string;
+  produto: string;
+  tipo_alimentacao: string | null;
+  potencia: number | null;
+}
+
 export interface FilterOptions {
   fabricantes: string[];
   modelos: Array<{ produto: string | null; fabricante: string | null }>;
@@ -52,6 +60,7 @@ interface DashboardStore {
   rmaData: RMARow[];
   vendasData: VendasRow[];
   vendasMensal: VendasMensalRow[] | null;
+  treeCatalog: TreeCatalogRow[];
   filterOptions: FilterOptions;
   filters: FilterState;
   crossFilter: { type: string | null; value: string | null };
@@ -120,6 +129,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   );
   const [vendasData, setVendasData] = useState<VendasRow[]>(() => cacheGet<VendasRow[]>("vendas") ?? []);
   const [vendasMensalRaw, setVendasMensal] = useState<VendasMensalRow[] | null>(null);
+  const [treeCatalogRaw, setTreeCatalogRaw] = useState<TreeCatalogRow[]>(() => cacheGet<TreeCatalogRow[]>("treeCatalog") ?? []);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>(
     () => cacheGet<FilterOptions>("filterOptions") ?? { fabricantes: [], modelos: [], classificacoes: [] }
   );
@@ -370,6 +380,24 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
+  // Catálogo de produtos com RMA em qualquer data (uma vez na montagem)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/analytics?type=tree-catalog");
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled || !Array.isArray(data.rows)) return;
+        setTreeCatalogRaw(data.rows);
+        cacheSet("treeCatalog", data.rows);
+      } catch {
+        // ignora — a árvore cai para os RMAs do período
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const setUnidade = useCallback((u: Unidade) => {
     setUnidadeState(u);
     cacheSet("unidade", u);
@@ -392,6 +420,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     if (!filters.apenasAtivos || !ativosReady) return vendasMensalRaw;
     return vendasMensalRaw.filter((v) => produtosAtivos.has(normProduto(v.produto)));
   }, [vendasMensalRaw, filters.apenasAtivos, ativosReady, produtosAtivos]);
+
+  const treeCatalog = useMemo(() => {
+    if (!filters.apenasAtivos || !ativosReady) return treeCatalogRaw;
+    return treeCatalogRaw.filter((c) => produtosAtivos.has(normProduto(c.produto)));
+  }, [treeCatalogRaw, filters.apenasAtivos, ativosReady, produtosAtivos]);
 
   const setFilters = useCallback((partial: Partial<FilterState>) => {
     setFiltersState((prev) => {
@@ -428,6 +461,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         rmaData: rmaDataView,
         vendasData: vendasDataView,
         vendasMensal,
+        treeCatalog,
         filterOptions,
         filters,
         crossFilter,
