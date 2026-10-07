@@ -27,6 +27,10 @@ export function FabricanteBreakdown() {
   const { rmaData, treeCatalog, filters, unidade, powerMap } = useDashboard();
   const selectedFabs = filters.fabricantes;
   const selectedKey = selectedFabs.join(",");
+  // Classificação só existe nos RMAs (calculada por tipo + potência). Com um subconjunto de
+  // classes marcado, até o nível do fabricante precisa consultar só os produtos dessas classes.
+  const filtraClass = filters.classificacoes.length > 0 && filters.classificacoes.length < 4;
+  const classKey = filters.classificacoes.join(",");
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [cohort, setCohort] = useState<Record<string, Cohort>>({});
@@ -96,7 +100,6 @@ export function FabricanteBreakdown() {
     // 1) Estrutura: todo produto que já teve RMA em qualquer data. O pai (fabricante) consulta
     //    as vendas de todos esses produtos; sem isto, com período filtrado, os filhos listariam
     //    só produtos com RMA no período e não fechariam com o pai.
-    const filtraClass = filters.classificacoes.length > 0 && filters.classificacoes.length < 4;
     for (const c of treeCatalog) {
       if (!selectedFabs.includes(c.fabricante)) continue;
       const classif = calcularClassificacao(c.tipo_alimentacao, c.potencia);
@@ -143,10 +146,10 @@ export function FabricanteBreakdown() {
         produtos: [...f.prod], rmaGlobal: f.sac.size, rmaGlobalKw: kwOf(f), children: tipos,
       } as TreeNode;
     });
-  }, [rmaData, treeCatalog, selectedKey, powerMap, filters.classificacoes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rmaData, treeCatalog, selectedKey, powerMap, classKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Invalida cache quando filtros mudam
-  const fsig = `${filters.dateStart}|${filters.dateEnd}|${filters.apenasAtivos}|${selectedKey}`;
+  const fsig = `${filters.dateStart}|${filters.dateEnd}|${filters.apenasAtivos}|${selectedKey}|${classKey}`;
   useEffect(() => {
     genRef.current++;
     setCohort({});
@@ -185,7 +188,7 @@ export function FabricanteBreakdown() {
           if (filters.dateStart) params.set("dateStart", filters.dateStart);
           if (filters.dateEnd) params.set("dateEnd", filters.dateEnd);
           if (filters.apenasAtivos) params.set("apenasAtivos", "1");
-          if (n.level > 0 && n.produtos.length) params.set("modelos", n.produtos.join(","));
+          if ((n.level > 0 || filtraClass) && n.produtos.length) params.set("modelos", n.produtos.join(","));
           for (let attempt = 0; attempt < 3; attempt++) {
             if (attempt > 0) await new Promise((res) => setTimeout(res, 1500 * attempt));
             try {
