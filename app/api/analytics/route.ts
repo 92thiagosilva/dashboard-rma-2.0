@@ -158,7 +158,13 @@ export async function GET(req: NextRequest) {
           p_modelos:     modelos.length > 0     ? modelos     : null,
         })
       : (() => {
-          let q = supabase.from("vendas").select("*").limit(120000);
+          // Produtos "KIT ..." (kits de fixação de microinversor) não são o foco da dashboard
+          // e ficam fora de todos os cálculos. Linhas sem descrição continuam sendo contadas.
+          let q = supabase
+            .from("vendas")
+            .select("*")
+            .or("descricao_produto.is.null,descricao_produto.not.ilike.KIT *")
+            .limit(120000);
           if (dateStart) q = q.gte("data_venda", dateStart);
           if (dateEnd)   q = q.lte("data_venda", dateEnd);
           return q;
