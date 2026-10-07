@@ -62,6 +62,22 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ produtos });
     }
 
+    if (type === "vendas-mensal") {
+      // Vendas agregadas por mês e produto (sem o limite de 120k linhas do cliente).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("vendas_mensal", {
+        p_date_start: dateStart || null,
+        p_date_end: dateEnd || null,
+        p_fabricantes: fabricantes.length > 0 ? fabricantes : null,
+        p_modelos: modelos.length > 0 ? modelos : null,
+      });
+      if (error) {
+        console.error("[analytics/vendas-mensal] Erro no RPC:", error);
+        return NextResponse.json({ rows: null, error: error.message ?? String(error) });
+      }
+      return NextResponse.json({ rows: data ?? [] });
+    }
+
     if (type === "cohort") {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc("rma_taxa_por_coorte_venda", {

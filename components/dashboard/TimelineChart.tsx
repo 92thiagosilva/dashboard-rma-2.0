@@ -33,7 +33,7 @@ const CustomTooltip = ({ active, payload, label }: {
 };
 
 export function TimelineChart() {
-  const { rmaData, vendasData, loading, unidade, powerMap } = useDashboard();
+  const { rmaData, vendasData, vendasMensal, loading, unidade, powerMap } = useDashboard();
 
   const data = useMemo(() => {
     const filteredVendas = vendasData;
@@ -53,12 +53,18 @@ export function TimelineChart() {
       if (!timeline[mes].sacRows.has(k)) timeline[mes].sacRows.set(k, r);
     });
 
-    filteredVendas.forEach((v) => {
-      if (!v.data_venda) return;
-      const mes = v.data_venda.slice(0, 7);
-      if (minRmaMes && mes < minRmaMes) return;
-      if (!timeline[mes]) timeline[mes] = { mes, vendas: 0, sacRows: new Map() };
-      timeline[mes].vendas += valorNaUnidade(v.quantidade_vendida ?? 0, v.descricao_produto, unidade, resolver);
+    // Com vendas truncadas no cliente (120k linhas), usa a série mensal agregada no servidor
+    const linhasVendas: Array<{ mes: string; qtd: number; produto: string | null }> = vendasMensal
+      ? vendasMensal.map((v) => ({ mes: v.mes, qtd: v.qtd, produto: v.produto }))
+      : filteredVendas.flatMap((v) =>
+          v.data_venda
+            ? [{ mes: v.data_venda.slice(0, 7), qtd: v.quantidade_vendida ?? 0, produto: v.descricao_produto }]
+            : []
+        );
+    linhasVendas.forEach((v) => {
+      if (minRmaMes && v.mes < minRmaMes) return;
+      if (!timeline[v.mes]) timeline[v.mes] = { mes: v.mes, vendas: 0, sacRows: new Map() };
+      timeline[v.mes].vendas += valorNaUnidade(v.qtd, v.produto, unidade, resolver);
     });
 
     return Object.values(timeline)
@@ -72,7 +78,7 @@ export function TimelineChart() {
         }
         return { mes: d.mes, vendas: Math.round(d.vendas), rma: Math.round(rma), label: formatMonthLabel(d.mes) };
       });
-  }, [rmaData, vendasData, unidade, powerMap]);
+  }, [rmaData, vendasData, vendasMensal, unidade, powerMap]);
 
   if (loading) {
     return <div className="bg-white rounded-xl border border-slate-100 shadow-card p-5 col-span-2 h-72 skeleton" />;

@@ -26,7 +26,10 @@
       "mcp__c9b06a3d-04b0-41cb-86ed-ccdfa000617d__apply_migration",
       "PowerShell(pip install openpyxl -q)",
       "PowerShell(New-Item -ItemType Directory -Force -Path \"C:\\\\Users\\\\thiago.silva\\\\OneDrive - FOTUS ENERGIA SOLAR LTDA\\\\Documentos\\\\Claude\\\\Projects\\\\Dashboard RMA\\\\app\\\\api\\\\clear\")",
-      "PowerShell($env:PORT = \"3001\"; Start-Process -NoNewWindow -FilePath \"npm\" -ArgumentList \"run\", \"dev\", \"--\", \"-p\", \"3001\" -WorkingDirectory \"C:\\\\Users\\\\thiago.silva\\\\OneDrive - FOTUS ENERGIA SOLAR LTDA\\\\Documentos\\\\Claude\\\\Projects\\\\Dashboard RMA\")"
+      "PowerShell($env:PORT = \"3001\"; Start-Process -NoNewWindow -FilePath \"npm\" -ArgumentList \"run\", \"dev\", \"--\", \"-p\", \"3001\" -WorkingDirectory \"C:\\\\Users\\\\thiago.silva\\\\OneDrive - FOTUS ENERGIA SOLAR LTDA\\\\Documentos\\\\Claude\\\\Projects\\\\Dashboard RMA\")",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'fix\\(timeline\\): aggregate monthly sales on the server when sales are truncated *)",
+      "Bash(git push *)"
     ]
   }
 }

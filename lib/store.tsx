@@ -35,6 +35,13 @@ export interface VendasRow {
   numero_fotus: string | null;
 }
 
+// Vendas agregadas no servidor por mês (YYYY-MM) e produto (UPPER/TRIM).
+export interface VendasMensalRow {
+  mes: string;
+  produto: string;
+  qtd: number;
+}
+
 export interface FilterOptions {
   fabricantes: string[];
   modelos: Array<{ produto: string | null; fabricante: string | null }>;
@@ -44,6 +51,7 @@ export interface FilterOptions {
 interface DashboardStore {
   rmaData: RMARow[];
   vendasData: VendasRow[];
+  vendasMensal: VendasMensalRow[] | null;
   filterOptions: FilterOptions;
   filters: FilterState;
   crossFilter: { type: string | null; value: string | null };
@@ -111,6 +119,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     }))
   );
   const [vendasData, setVendasData] = useState<VendasRow[]>(() => cacheGet<VendasRow[]>("vendas") ?? []);
+  const [vendasMensalRaw, setVendasMensal] = useState<VendasMensalRow[] | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>(
     () => cacheGet<FilterOptions>("filterOptions") ?? { fabricantes: [], modelos: [], classificacoes: [] }
   );
@@ -207,6 +216,22 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
       setRmaData(rmaFinal);
       setVendasData(data.vendas ?? []);
+
+      // Vendas truncadas no limite de 120k linhas: busca a série mensal agregada no servidor
+      // para a linha do tempo não perder meses. Se falhar, a linha do tempo usa os dados do cliente.
+      if ((data.vendas ?? []).length >= 120000) {
+        try {
+          const mp = new URLSearchParams(params);
+          mp.set("type", "vendas-mensal");
+          const mres = await fetch(`/api/analytics?${mp}`, { signal });
+          const m = mres.ok ? await mres.json() : null;
+          if (!signal.aborted) setVendasMensal(Array.isArray(m?.rows) ? m.rows : null);
+        } catch {
+          if (!signal.aborted) setVendasMensal(null);
+        }
+      } else {
+        setVendasMensal(null);
+      }
 
       // Salva no cache apenas quando não há filtros ativos (dados "completos")
       const noFilters =
@@ -344,6 +369,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     return vendasData.filter((v) => produtosAtivos.has(normProduto(v.descricao_produto)));
   }, [vendasData, filters.apenasAtivos, ativosReady, produtosAtivos]);
 
+  const vendasMensal = useMemo(() => {
+    if (!vendasMensalRaw) return null;
+    if (!filters.apenasAtivos || !ativosReady) return vendasMensalRaw;
+    return vendasMensalRaw.filter((v) => produtosAtivos.has(normProduto(v.produto)));
+  }, [vendasMensalRaw, filters.apenasAtivos, ativosReady, produtosAtivos]);
+
   const setFilters = useCallback((partial: Partial<FilterState>) => {
     setFiltersState((prev) => {
       const next = { ...prev, ...partial };
@@ -378,6 +409,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       value={{
         rmaData: rmaDataView,
         vendasData: vendasDataView,
+        vendasMensal,
         filterOptions,
         filters,
         crossFilter,
