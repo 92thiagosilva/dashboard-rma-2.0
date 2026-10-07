@@ -61,6 +61,8 @@ interface DashboardStore {
   vendasData: VendasRow[];
   vendasMensal: VendasMensalRow[] | null;
   treeCatalog: TreeCatalogRow[];
+  vendasTruncadas: boolean;            // vendas brutas no limite de linhas (lista incompleta)
+  produtosClasse: string[] | null;     // produtos das classes marcadas (null = sem filtro de classe)
   filterOptions: FilterOptions;
   filters: FilterState;
   crossFilter: { type: string | null; value: string | null };
@@ -410,16 +412,45 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     return rmaData.filter((r) => produtosAtivos.has(normProduto(r.produto)));
   }, [rmaData, filters.apenasAtivos, ativosReady, produtosAtivos]);
 
+  // Classificação só existe nos RMAs (tipo de alimentação + potência). Para a venda, a classe
+  // vem do produto: com um subconjunto de classes marcado, só contam os produtos do catálogo
+  // (os que já tiveram RMA) cuja classe esteja marcada — o mesmo critério da árvore.
+  // null = sem filtro de classe (ou catálogo ainda não carregado).
+  const classKey = filters.classificacoes.join(",");
+  const produtosClasse = useMemo(() => {
+    const subconjunto = filters.classificacoes.length > 0 && filters.classificacoes.length < 4;
+    if (!subconjunto || treeCatalogRaw.length === 0) return null;
+    const nomes = new Set<string>();
+    for (const c of treeCatalogRaw) {
+      if (filters.classificacoes.includes(calcularClassificacao(c.tipo_alimentacao, c.potencia) ?? "")) nomes.add(c.produto);
+    }
+    return nomes;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [treeCatalogRaw, classKey]);
+  const produtosClasseNorm = useMemo(
+    () => (produtosClasse ? new Set([...produtosClasse].map(normProduto)) : null),
+    [produtosClasse]
+  );
+
+  const produtosClasseArr = useMemo(() => (produtosClasse ? [...produtosClasse] : null), [produtosClasse]);
+
+  // Vendas brutas no limite de linhas = lista truncada (a decisão não pode olhar a lista já filtrada)
+  const vendasTruncadas = vendasData.length >= 120000;
+
   const vendasDataView = useMemo(() => {
-    if (!filters.apenasAtivos || !ativosReady) return vendasData;
-    return vendasData.filter((v) => produtosAtivos.has(normProduto(v.descricao_produto)));
-  }, [vendasData, filters.apenasAtivos, ativosReady, produtosAtivos]);
+    let out = vendasData;
+    if (filters.apenasAtivos && ativosReady) out = out.filter((v) => produtosAtivos.has(normProduto(v.descricao_produto)));
+    if (produtosClasseNorm) out = out.filter((v) => produtosClasseNorm.has(normProduto(v.descricao_produto)));
+    return out;
+  }, [vendasData, filters.apenasAtivos, ativosReady, produtosAtivos, produtosClasseNorm]);
 
   const vendasMensal = useMemo(() => {
     if (!vendasMensalRaw) return null;
-    if (!filters.apenasAtivos || !ativosReady) return vendasMensalRaw;
-    return vendasMensalRaw.filter((v) => produtosAtivos.has(normProduto(v.produto)));
-  }, [vendasMensalRaw, filters.apenasAtivos, ativosReady, produtosAtivos]);
+    let out = vendasMensalRaw;
+    if (filters.apenasAtivos && ativosReady) out = out.filter((v) => produtosAtivos.has(normProduto(v.produto)));
+    if (produtosClasseNorm) out = out.filter((v) => produtosClasseNorm.has(normProduto(v.produto)));
+    return out;
+  }, [vendasMensalRaw, filters.apenasAtivos, ativosReady, produtosAtivos, produtosClasseNorm]);
 
   const treeCatalog = useMemo(() => {
     if (!filters.apenasAtivos || !ativosReady) return treeCatalogRaw;
@@ -461,6 +492,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         rmaData: rmaDataView,
         vendasData: vendasDataView,
         vendasMensal,
+        vendasTruncadas,
+        produtosClasse: produtosClasseArr,
         treeCatalog,
         filterOptions,
         filters,

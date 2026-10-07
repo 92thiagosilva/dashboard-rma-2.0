@@ -49,7 +49,7 @@ interface CohortData {
 }
 
 export function KPIGrid() {
-  const { rmaData, vendasData, loading, filters, filterOptions, unidade, powerMap } = useDashboard();
+  const { rmaData, vendasData, vendasTruncadas, produtosClasse, loading, filters, filterOptions, unidade, powerMap } = useDashboard();
   const emKW = unidade === "kw";
 
   const [cohort, setCohort] = useState<CohortData | null>(null);
@@ -73,7 +73,15 @@ export function KPIGrid() {
           filters.modelos.length < filterOptions.modelos.length;
 
         if (fabricantesFiltered) params.set("fabricantes", filters.fabricantes.join(","));
-        if (modelosFiltered) params.set("modelos", filters.modelos.join(","));
+        // Filtro de classificação: restringe aos produtos das classes marcadas (cruzado com os
+        // modelos selecionados, se houver). Lista vazia = nenhum produto (o RPC trata vazio como "todos").
+        let modelos: string[] | null = modelosFiltered ? filters.modelos : null;
+        if (produtosClasse) {
+          const permitidos = new Set(produtosClasse);
+          modelos = (modelos ?? produtosClasse).filter((m) => permitidos.has(m));
+          if (modelos.length === 0) modelos = ["__NENHUM__"];
+        }
+        if (modelos) params.set("modelos", modelos.join(","));
         if (filters.apenasAtivos) params.set("apenasAtivos", "1");
 
         // Retry: o RPC global pode falhar (timeout) sob carga inicial. Tenta até 3x.
@@ -95,7 +103,7 @@ export function KPIGrid() {
     fetch_();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateStart, filters.dateEnd, filters.apenasAtivos, filters.fabricantes.join(","), filters.modelos.join(","), filterOptions.fabricantes.length, filterOptions.modelos.length]);
+  }, [filters.dateStart, filters.dateEnd, filters.apenasAtivos, filters.fabricantes.join(","), filters.modelos.join(","), filterOptions.fabricantes.length, filterOptions.modelos.length, produtosClasse?.join("|") ?? ""]);
 
   const kpis = useMemo(() => {
     const filteredVendas = vendasData;
@@ -159,8 +167,7 @@ export function KPIGrid() {
   // vendas do cliente são só uma amostra arbitrária e os totais saem menores (e variam de
   // uma carga para outra). Nesse caso o total vem do servidor (o mesmo do card de Coorte,
   // com os mesmos filtros). Abaixo do teto o cliente é exato e nada muda.
-  const VENDAS_LIMITE = 120000;
-  const vendasTruncadas = vendasData.length >= VENDAS_LIMITE;
+  // vendasTruncadas vem do store (lista bruta no limite), não da lista já filtrada por ativos/classe
   const cohortOk = !!cohort && !cohortLoading && !(cohort as CohortData & { _rpcError?: string })._rpcError;
   const usaServidor = vendasTruncadas && cohortOk;
   const vendidoInv = usaServidor ? cohort!.totalInversores : kpis.totalInversores;
