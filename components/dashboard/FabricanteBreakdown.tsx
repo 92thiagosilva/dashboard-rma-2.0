@@ -258,9 +258,9 @@ export function FabricanteBreakdown() {
               const isOpen = expanded.has(n.key);
               const vendido = loaded ? (emKW ? c!.invKw : c!.inv) : 0;
               const rmaGlobal = emKW ? n.rmaGlobalKw : n.rmaGlobal;
-              const corte = loaded ? (emKW ? c!.linkedKw : c!.linked) : 0;
+              const coorte = loaded ? (emKW ? c!.linkedKw : c!.linked) : 0;
               const taxaGlobal = loaded && vendido > 0 ? (rmaGlobal / vendido) * 100 : 0;
-              const taxaCorte = loaded && vendido > 0 ? (corte / vendido) * 100 : 0;
+              const taxaCoorte = loaded && vendido > 0 ? (coorte / vendido) * 100 : 0;
               const nameColor = n.level === 0 ? "text-slate-700 font-semibold" : n.level === 1 ? "text-slate-600" : n.level === 2 ? "text-slate-500" : "text-slate-400";
               return (
                 <tr
@@ -280,12 +280,12 @@ export function FabricanteBreakdown() {
                   <td className={`px-4 py-1 text-right font-bold ${loaded ? taxaColor(taxaGlobal) : "text-slate-300"}`}>
                     {loaded ? `${taxaGlobal.toFixed(2)}%` : placeholder}
                   </td>
-                  <td className={`px-4 py-1 text-right font-bold ${loaded ? taxaColor(taxaCorte) : "text-slate-300"}`}>
-                    {loaded ? `${taxaCorte.toFixed(2)}%` : placeholder}
+                  <td className={`px-4 py-1 text-right font-bold ${loaded ? taxaColor(taxaCoorte) : "text-slate-300"}`}>
+                    {loaded ? `${taxaCoorte.toFixed(2)}%` : placeholder}
                   </td>
                   <td className="px-4 py-1 text-right text-slate-400">{loaded ? fmt(vendido) : placeholder}</td>
                   <td className="px-4 py-1 text-right text-slate-400">{fmt(rmaGlobal)}</td>
-                  <td className="px-4 py-1 text-right text-slate-400">{loaded ? fmt(corte) : placeholder}</td>
+                  <td className="px-4 py-1 text-right text-slate-400">{loaded ? fmt(coorte) : placeholder}</td>
                 </tr>
               );
             })}
