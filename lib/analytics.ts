@@ -4,7 +4,13 @@
  *   Trifásica 220V/380V → ≤ 20 kW = Pequeno Porte
  *                          > 20 e ≤ 40 kW = Médio Porte
  *                          > 40 kW = Grande Porte
+ *
+ * rma.potencia vem em watts (ex.: 50000) ou, em alguns registros, em kW; normalizaKW converte
+ * para kW antes de comparar com os limites (antes comparava watts com 20/40 e todo trifásico
+ * virava Grande Porte).
  */
+import { normalizaKW } from "@/lib/units";
+
 export function calcularClassificacao(
   tipoAlimentacao: string | null,
   potencia: number | null
@@ -18,9 +24,10 @@ export function calcularClassificacao(
   }
 
   // Trifásica (220V LV ou 380V)
-  if (potencia === null || potencia <= 0) return "Não classificado";
-  if (potencia <= 20) return "Pequeno Porte";
-  if (potencia <= 40) return "Médio Porte";
+  const kw = normalizaKW(potencia);
+  if (kw === null) return "Não classificado";
+  if (kw <= 20) return "Pequeno Porte";
+  if (kw <= 40) return "Médio Porte";
   return "Grande Porte";
 }
 
