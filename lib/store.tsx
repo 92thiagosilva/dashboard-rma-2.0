@@ -155,7 +155,17 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const filterOptionsRef = useRef<FilterOptions>({ fabricantes: [], modelos: [], classificacoes: [] });
   filterOptionsRef.current = filterOptions;
 
-  const fetchData = useCallback(async (f: FilterState, silent = false) => {
+  // Consulta pendente aguardando as opções de filtro (ver fetchData)
+  const pendingFetchRef = useRef<{ f: FilterState; silent: boolean } | null>(null);
+
+  const fetchData = useCallback(async (f: FilterState, silent = false, semEspera = false): Promise<void> => {
+    // Sem as opções de filtro não dá para saber se a seleção é um subconjunto real; enviar a
+    // consulta agora traria TODOS os fabricantes mesmo com algum desmarcado. Espera as opções
+    // (fetchFilterOptions dispara a consulta pendente ao terminar, com sucesso ou falha).
+    if (!semEspera && f.fabricantes.length > 0 && filterOptionsRef.current.fabricantes.length === 0) {
+      pendingFetchRef.current = { f, silent };
+      return;
+    }
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
     if (!silent) setLoading(true);
@@ -259,6 +269,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       const CLASSIFICACOES_FIXAS = ["Pequeno Porte", "Médio Porte", "Grande Porte", "Não classificado"];
       const mergedData = { ...data, classificacoes: CLASSIFICACOES_FIXAS };
       setFilterOptions(mergedData);
+      filterOptionsRef.current = mergedData; // já disponível para a consulta pendente (o ref só atualiza no próximo render)
       cacheSet("filterOptions", mergedData);
 
       // Só inicializa filtros na primeira carga (para não sobrescrever seleção do usuário)
@@ -278,8 +289,16 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {
       // ignora
+    } finally {
+      // Dispara a consulta que ficou esperando as opções. Em caso de falha das opções,
+      // segue sem esperar (melhor mostrar os dados do que ficar em "carregando").
+      const pendente = pendingFetchRef.current;
+      if (pendente) {
+        pendingFetchRef.current = null;
+        fetchData(pendente.f, pendente.silent, true);
+      }
     }
-  }, []);
+  }, [fetchData]);
 
   // Na montagem: se há cache, faz refresh silencioso em background
   // Se não há cache, faz fetch normal com loading
