@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDashboard } from "@/lib/store";
 import { calcularClassificacao } from "@/lib/analytics";
-import { CaretRight, CaretDown } from "@phosphor-icons/react";
+import { CaretRight, CaretDown, CaretUp } from "@phosphor-icons/react";
 import { normalizaKW, normProd, criaResolverPotencia, formataValor } from "@/lib/units";
 
 interface TreeNode {
@@ -16,6 +16,8 @@ interface TreeNode {
   rmaGlobalKw: number;  // soma da potência (1 valor por SAC) do grupo
   children: TreeNode[];
 }
+
+type SortCol = "grupo" | "taxaGlobal" | "taxaCoorte" | "vendido" | "rmaGlobal" | "coorte";
 
 interface Cohort { inv: number; linked: number; invKw: number; linkedKw: number; failed?: boolean }
 
@@ -158,18 +160,51 @@ export function FabricanteBreakdown() {
     queueRef.current = [];
   }, [fsig]);
 
+  // Ordenação por coluna (entre irmãos, em todos os níveis). null = ordem original (mais RMAs primeiro).
+  const [sort, setSort] = useState<{ col: SortCol; dir: "asc" | "desc" } | null>(null);
+  const emKWSort = unidade === "kw";
+
+  const valorDe = (n: TreeNode, col: SortCol): number | null => {
+    const c = cohort[n.key];
+    const loaded = !!c && !c.failed;
+    const rmaG = emKWSort ? n.rmaGlobalKw : n.rmaGlobal;
+    if (col === "rmaGlobal") return rmaG;
+    if (!loaded) return null; // ainda carregando ou falhou: vai para o fim
+    const vend = emKWSort ? c!.invKw : c!.inv;
+    const coor = emKWSort ? c!.linkedKw : c!.linked;
+    if (col === "vendido") return vend;
+    if (col === "coorte") return coor;
+    if (col === "taxaGlobal") return vend > 0 ? rmaG / vend : 0;
+    if (col === "taxaCoorte") return vend > 0 ? coor / vend : 0;
+    return null;
+  };
+
+  const ordena = (nodes: TreeNode[]): TreeNode[] => {
+    if (!sort) return nodes;
+    const f = sort.dir === "asc" ? 1 : -1;
+    return [...nodes].sort((a, b) => {
+      if (sort.col === "grupo") return f * a.label.localeCompare(b.label, "pt-BR", { numeric: true });
+      const va = valorDe(a, sort.col), vb = valorDe(b, sort.col);
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1; // sem valor sempre por último, nas duas direções
+      if (vb === null) return -1;
+      return f * (va - vb);
+    });
+  };
+
   // Nós visíveis (topo + filhos de nós expandidos)
   const visible = useMemo(() => {
     const out: TreeNode[] = [];
     const walk = (nodes: TreeNode[]) => {
-      for (const n of nodes) {
+      for (const n of ordena(nodes)) {
         out.push(n);
         if (expanded.has(n.key) && n.children.length) walk(n.children);
       }
     };
     walk(forest);
     return out;
-  }, [forest, expanded]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forest, expanded, sort, sort ? cohort : null, emKWSort]);
 
   // Pump: processa a fila respeitando o limite de concorrência (sem cancelar em voo,
   // para não travar em "…"). Um "generation guard" descarta respostas de filtros antigos.
@@ -248,6 +283,40 @@ export function FabricanteBreakdown() {
   const levelPad = ["pl-4", "pl-9", "pl-14", "pl-20", "pl-24"];
   const fmt = (v: number) => (emKW ? formataValor(v, unidade) : v.toLocaleString("pt-BR"));
 
+  // Clique: 1º = ordem "natural" da coluna (Grupo A→Z, números do maior para o menor),
+  // 2º = inverte, 3º = volta à ordem original.
+  const clicaOrdem = (col: SortCol) =>
+    setSort((s) => {
+      const primeira = col === "grupo" ? "asc" : "desc";
+      if (!s || s.col !== col) return { col, dir: primeira };
+      if (s.dir === primeira) return { col, dir: primeira === "asc" ? "desc" : "asc" };
+      return null;
+    });
+
+  const sortTh = (col: SortCol, label: string, align: "left" | "right", title?: string) => {
+    const ativo = sort?.col === col;
+    const dir = ativo ? sort!.dir : null;
+    return (
+      <th
+        className={`font-bold px-4 py-1.5 whitespace-nowrap ${align === "left" ? "text-left" : "text-right"}`}
+        aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
+      >
+        <button
+          type="button"
+          onClick={() => clicaOrdem(col)}
+          title={title ?? "Clique para ordenar (maior→menor, menor→maior, original)"}
+          className={`inline-flex items-center gap-1 uppercase tracking-wider font-bold hover:text-indigo-500 transition-colors ${ativo ? "text-indigo-500" : ""}`}
+        >
+          {label}
+          <span className="inline-flex flex-col leading-none -space-y-0.5">
+            <CaretUp size={8} weight="bold" className={dir === "asc" ? "text-indigo-500" : "text-slate-300"} />
+            <CaretDown size={8} weight="bold" className={dir === "desc" ? "text-indigo-500" : "text-slate-300"} />
+          </span>
+        </button>
+      </th>
+    );
+  };
+
   return (
     <div className="bg-white rounded-xl border border-slate-100 border-l-4 border-l-indigo-400 shadow-card mb-5 overflow-hidden">
       <div className="px-4 pt-3 pb-2 border-b border-slate-100">
@@ -265,12 +334,12 @@ export function FabricanteBreakdown() {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="text-left font-bold px-4 py-1.5">Grupo</th>
-              <th className="text-right font-bold px-4 py-1.5">Taxa Global</th>
-              <th className="text-right font-bold px-4 py-1.5" title="Coorte: RMAs de qualquer data vinculados às vendas do período (Nro. Fotus) ÷ vendido no período">Taxa Coorte</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW Vendido" : "Qtd. Vendido"}</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Global)" : "Qtd. RMA (Global)"}</th>
-              <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA (Coorte)" : "Qtd. RMA (Coorte)"}</th>
+              {sortTh("grupo", "Grupo", "left")}
+              {sortTh("taxaGlobal", "Taxa Global", "right")}
+              {sortTh("taxaCoorte", "Taxa Coorte", "right", "Coorte: RMAs de qualquer data vinculados às vendas do período (Nro. Fotus) ÷ vendido no período")}
+              {sortTh("vendido", emKW ? "kW Vendido" : "Qtd. Vendido", "right")}
+              {sortTh("rmaGlobal", emKW ? "kW RMA (Global)" : "Qtd. RMA (Global)", "right")}
+              {sortTh("coorte", emKW ? "kW RMA (Coorte)" : "Qtd. RMA (Coorte)", "right")}
             </tr>
           </thead>
           <tbody>
