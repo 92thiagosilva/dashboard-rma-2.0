@@ -5,55 +5,45 @@ import { CaretRight, CaretDown } from "@phosphor-icons/react";
 import { useDashboard } from "@/lib/store";
 import { normalizaKW, normProd, criaResolverPotencia, formataValor } from "@/lib/units";
 
-// Prazos (em meses, contados da data da venda) em ordem crescente. A tabela os exibe do maior para o menor.
-const PRAZOS = [
-  { meses: 1, label: "Até 1 mês" },
-  { meses: 3, label: "Até 3 meses" },
-  { meses: 6, label: "Até 6 meses" },
-  { meses: 12, label: "Até 1 ano" },
-  { meses: 24, label: "Até 2 anos" },
-  { meses: 36, label: "Até 3 anos" },
-  { meses: 48, label: "Até 4 anos" },
-  { meses: 60, label: "Até 5 anos" },
-];
-const N = PRAZOS.length;
-
-// Soma `m` meses a uma data ISO (YYYY-MM-DD), ajustando o dia ao último do mês quando preciso.
-function somaMeses(iso: string, m: number): string {
-  const [y, mo, d] = iso.slice(0, 10).split("-").map(Number);
-  const t = mo - 1 + m;
-  const ny = y + Math.floor(t / 12);
-  const nm = t % 12;
-  const ultimo = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
-  return `${ny}-${String(nm + 1).padStart(2, "0")}-${String(Math.min(d, ultimo)).padStart(2, "0")}`;
-}
+// Idade da venda no ano de abertura do RMA: ano do RMA − ano da venda (calendário).
+// Ex.: RMA aberto em 2026 de um inversor vendido em 2021 = "vendido há 5 anos".
+// Exibidos do mais antigo (5) para o mais recente (1).
+const IDADES = [5, 4, 3, 2, 1];
+const N = IDADES.length;
+const rotulo = (anos: number) => `Vendidos há ${anos} ${anos === 1 ? "ano" : "anos"}`;
 
 interface Agg {
-  cum: number[];   // cum[i] = valor dos RMAs abertos em até PRAZOS[i] após a venda
-  total: number;   // valor de todos os RMAs do grupo com data de venda (inclui os acima de 5 anos)
+  n: number[];     // n[i] = valor dos RMAs abertos de vendas com idade IDADES[i]
+  total: number;   // valor de todos os RMAs do grupo com data de venda (qualquer idade)
 }
 interface ModeloNode extends Agg { nome: string }
 interface PotNode extends Agg { key: string; label: string; modelos: ModeloNode[] }
 interface FabNode extends Agg { nome: string; pots: PotNode[] }
 
-const novo = (): Agg => ({ cum: new Array(N).fill(0), total: 0 });
+const novo = (): Agg => ({ n: new Array(N).fill(0), total: 0 });
 function soma(a: Agg, idx: number, v: number) {
   a.total += v;
-  for (let i = idx; i < N; i++) a.cum[i] += v; // idx = primeiro prazo que contém o RMA (N = nenhum)
+  if (idx >= 0) a.n[idx] += v; // idx = -1: idade fora de 1–5 anos (só entra no total)
 }
 
 export function RmaPorTempoDeVenda() {
-  const { rmaData, loading, unidade, powerMap } = useDashboard();
+  const { rmaData, loading, unidade, powerMap, filters } = useDashboard();
   const emKW = unidade === "kw";
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const { raiz, fabs, semData, acima5 } = useMemo(() => {
+  // Ano de referência ("este ano"): só quando o período filtrado cabe em um único ano.
+  const anoRef =
+    filters.dateStart && filters.dateEnd && filters.dateStart.slice(0, 4) === filters.dateEnd.slice(0, 4)
+      ? Number(filters.dateStart.slice(0, 4))
+      : null;
+
+  const { raiz, fabs, semData, foraFaixa } = useMemo(() => {
     const resolver = criaResolverPotencia(powerMap);
     const raiz = novo();
     const fabMap = new Map<string, { agg: Agg; pots: Map<string, { agg: Agg; label: string; modelos: Map<string, Agg> }> }>();
     const vistos = new Set<string>();
     let semData = 0;
-    let acima5 = 0;
+    let foraFaixa = 0;
 
     for (const r of rmaData) {
       const chave = r.sac ?? `__id_${r.id}`;
@@ -64,11 +54,9 @@ export function RmaPorTempoDeVenda() {
       const criacao = r.data_criacao?.slice(0, 10);
       if (!venda || !criacao || criacao < venda) { semData++; continue; }
 
-      let idx = N;
-      for (let i = 0; i < N; i++) {
-        if (criacao <= somaMeses(venda, PRAZOS[i].meses)) { idx = i; break; }
-      }
-      if (idx === N) acima5++;
+      const idade = Number(criacao.slice(0, 4)) - Number(venda.slice(0, 4));
+      const idx = IDADES.indexOf(idade);
+      if (idx < 0) foraFaixa++;
 
       const prod = r.produto?.trim() || null;
       const kwRma = normalizaKW(r.potencia) ?? resolver(prod) ?? 0;
@@ -98,7 +86,7 @@ export function RmaPorTempoDeVenda() {
         modelos: [...p.modelos.entries()].map(([n, m]) => ({ nome: n, ...m })),
       })),
     }));
-    return { raiz, fabs, semData, acima5 };
+    return { raiz, fabs, semData, foraFaixa };
   }, [rmaData, powerMap, emKW]);
 
   const fmt = (v: number) => (emKW ? formataValor(v, unidade) : Math.round(v).toLocaleString("pt-BR"));
@@ -115,31 +103,6 @@ export function RmaPorTempoDeVenda() {
     return <div className="bg-white rounded-xl border border-slate-100 shadow-card p-5 mb-5 h-72 skeleton" />;
   }
 
-  // Linhas visíveis: prazo (maior → menor) → fabricante → potência → modelo
-  type Linha = { key: string; nivel: number; label: string; cum: number; base: number; filhos: boolean };
-  const linhas: Linha[] = [];
-  for (let i = N - 1; i >= 0; i--) {
-    const kW = `W${i}`;
-    linhas.push({ key: kW, nivel: 0, label: PRAZOS[i].label, cum: raiz.cum[i], base: raiz.total, filhos: fabs.some((f) => f.cum[i] > 0) });
-    if (!expanded.has(kW)) continue;
-    const porVolume = <T extends Agg>(xs: T[]) => xs.filter((x) => x.cum[i] > 0).sort((a, b) => b.cum[i] - a.cum[i]);
-    for (const f of porVolume(fabs)) {
-      const kF = `${kW}|F:${f.nome}`;
-      linhas.push({ key: kF, nivel: 1, label: f.nome, cum: f.cum[i], base: f.total, filhos: true });
-      if (!expanded.has(kF)) continue;
-      for (const p of porVolume(f.pots)) {
-        const kP = `${kF}|P:${p.key}`;
-        linhas.push({ key: kP, nivel: 2, label: p.label, cum: p.cum[i], base: p.total, filhos: true });
-        if (!expanded.has(kP)) continue;
-        for (const m of porVolume(p.modelos)) {
-          linhas.push({ key: `${kP}|M:${m.nome}`, nivel: 3, label: m.nome, cum: m.cum[i], base: m.total, filhos: false });
-        }
-      }
-    }
-  }
-
-  const pad = ["pl-4", "pl-9", "pl-14", "pl-20"];
-
   if (raiz.total === 0) {
     return (
       <div className="bg-white rounded-xl border border-slate-100 shadow-card p-5 mb-5 text-center text-slate-400 text-sm">
@@ -148,18 +111,46 @@ export function RmaPorTempoDeVenda() {
     );
   }
 
+  // Linhas visíveis: idade da venda → fabricante → potência → modelo
+  type Linha = { key: string; nivel: number; label: string; valor: number; base: number; filhos: boolean };
+  const linhas: Linha[] = [];
+  for (let i = 0; i < N; i++) {
+    const kW = `A${IDADES[i]}`;
+    const anoVenda = anoRef != null ? ` (vendas de ${anoRef - IDADES[i]})` : "";
+    linhas.push({ key: kW, nivel: 0, label: rotulo(IDADES[i]) + anoVenda, valor: raiz.n[i], base: raiz.total, filhos: fabs.some((f) => f.n[i] > 0) });
+    if (!expanded.has(kW)) continue;
+    const porVolume = <T extends Agg>(xs: T[]) => xs.filter((x) => x.n[i] > 0).sort((a, b) => b.n[i] - a.n[i]);
+    for (const f of porVolume(fabs)) {
+      const kF = `${kW}|F:${f.nome}`;
+      linhas.push({ key: kF, nivel: 1, label: f.nome, valor: f.n[i], base: f.total, filhos: true });
+      if (!expanded.has(kF)) continue;
+      for (const p of porVolume(f.pots)) {
+        const kP = `${kF}|P:${p.key}`;
+        linhas.push({ key: kP, nivel: 2, label: p.label, valor: p.n[i], base: p.total, filhos: true });
+        if (!expanded.has(kP)) continue;
+        for (const m of porVolume(p.modelos)) {
+          linhas.push({ key: `${kP}|M:${m.nome}`, nivel: 3, label: m.nome, valor: m.n[i], base: m.total, filhos: false });
+        }
+      }
+    }
+  }
+
+  const pad = ["pl-4", "pl-9", "pl-14", "pl-20"];
+  const periodo = anoRef != null ? `abertos em ${anoRef}` : "abertos no período filtrado";
+
   return (
     <div className="bg-white rounded-xl border border-slate-100 border-l-4 border-l-amber-400 shadow-card mb-5 overflow-hidden">
       <div className="px-4 pt-3 pb-2 border-b border-slate-100">
         <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">RMAs por Tempo desde a Venda</p>
-        <p className="text-[10px] text-slate-400 mt-0.5">Clique para expandir: Prazo → Fabricante → Potência → Modelo</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">Clique para expandir: Idade da venda → Fabricante → Potência → Modelo</p>
         <p className="text-[10px] text-slate-400 mt-0.5">
-          Tempo entre a NF de venda e a abertura do RMA, <span className="font-medium text-slate-500">acumulado</span> (&quot;Até 1 ano&quot; inclui os de até 6 meses).{" "}
-          <span className="font-medium text-slate-500">%</span> = RMAs do grupo abertos naquele prazo ÷ total de RMAs do grupo com data de venda.
+          Dos RMAs {periodo}, quantos vieram de inversores vendidos há 5, 4, 3, 2 e 1 ano(s). A idade é a diferença entre o ano do RMA e o ano da NF de venda
+          {anoRef == null && <> (selecione um ano no filtro Período para ver &quot;este ano&quot;)</>}.{" "}
+          <span className="font-medium text-slate-500">%</span> = RMAs do grupo daquela idade ÷ total de RMAs {periodo} do grupo (com data de venda).
         </p>
         <p className="text-[10px] text-slate-400 mt-0.5">
           Base: {fmt(raiz.total)} {emKW ? "de potência em RMAs" : "RMAs"} com data de venda
-          {acima5 > 0 && <> ({acima5.toLocaleString("pt-BR")} abertos após mais de 5 anos entram só no total)</>}
+          {foraFaixa > 0 && <> ({foraFaixa.toLocaleString("pt-BR")} são de vendas do mesmo ano ou de mais de 5 anos e entram só no total)</>}
           {semData > 0 && <>; {semData.toLocaleString("pt-BR")} RMAs sem data de venda ficam fora</>}.
         </p>
       </div>
@@ -168,7 +159,7 @@ export function RmaPorTempoDeVenda() {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-              <th className="text-left font-bold px-4 py-1.5">Prazo desde a venda</th>
+              <th className="text-left font-bold px-4 py-1.5">Idade da venda</th>
               <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "kW RMA abertos" : "RMAs abertos"}</th>
               <th className="text-left font-bold px-4 py-1.5 w-[34%]">% dos RMAs do grupo</th>
               <th className="text-right font-bold px-4 py-1.5 whitespace-nowrap">{emKW ? "Total do grupo (kW)" : "Total do grupo"}</th>
@@ -176,7 +167,7 @@ export function RmaPorTempoDeVenda() {
           </thead>
           <tbody>
             {linhas.map((l) => {
-              const p = pct(l.cum, l.base);
+              const p = pct(l.valor, l.base);
               const aberto = expanded.has(l.key);
               const nome = l.nivel === 0 ? "text-slate-700 font-semibold" : l.nivel === 1 ? "text-slate-600" : l.nivel === 2 ? "text-slate-500" : "text-slate-400";
               return (
@@ -193,7 +184,7 @@ export function RmaPorTempoDeVenda() {
                       {l.label}
                     </span>
                   </td>
-                  <td className="px-4 py-1 text-right font-bold text-slate-700">{fmt(l.cum)}</td>
+                  <td className="px-4 py-1 text-right font-bold text-slate-700">{fmt(l.valor)}</td>
                   <td className="px-4 py-1">
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
