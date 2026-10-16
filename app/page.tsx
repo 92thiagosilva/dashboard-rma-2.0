@@ -8,6 +8,7 @@ import { DefectsChart } from "@/components/dashboard/DefectsChart";
 import { RegionalChart } from "@/components/dashboard/RegionalChart";
 import { MTTFChart } from "@/components/dashboard/MTTFChart";
 import { RMATable } from "@/components/dashboard/RMATable";
+import { RmaPorTempoDeVenda } from "@/components/dashboard/RmaPorTempoDeVenda";
 
 export default function DashboardPage() {
   return (
@@ -25,6 +26,7 @@ export default function DashboardPage() {
             <RegionalChart />
             <MTTFChart />
           </div>
+          <RmaPorTempoDeVenda />
           <RMATable />
         </div>
       </main>
